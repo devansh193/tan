@@ -1,0 +1,10 @@
+node_modules
+dist
+drizzle
+.git
+.github
+.env
+*.log
+tests
+coverage
+*.md
