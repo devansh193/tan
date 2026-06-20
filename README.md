@@ -1,6 +1,6 @@
-# 🔗 URL Shortener
+# 🔗 tan 
 
-A production-minded URL shortener backend — clean architecture, secure token
+tan is a URL shortener backend — clean architecture, secure token
 auth, and reversible short codes powered by a counter + bijective function.
 
 > 🤖 **Built with [Claude Opus 4.8](https://www.anthropic.com).** The entire
