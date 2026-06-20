@@ -18,7 +18,7 @@ services:
       retries: 5
 
   # Optional: run the API in Docker too (`docker compose up`). For local dev you
-  # can instead run only postgres and use `npm run dev` on the host.
+  # can instead run only postgres and use `bun run dev` on the host.
   app:
     build: .
     container_name: url_shortener_api

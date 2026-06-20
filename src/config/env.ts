@@ -17,11 +17,14 @@ const envSchema = z.object({
 
   DATABASE_URL: z.string().url(),
 
-  JWT_ACCESS_SECRET: z.string().min(1),
-  ACCESS_TOKEN_TTL: z.string().default("15m"),
-  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
-  JWT_ISSUER: z.string().default("url-shortener"),
-  JWT_AUDIENCE: z.string().default("url-shortener-clients"),
+  // Better Auth: signing/encryption secret (32+ chars) and public base URL.
+  // Generate a secret with: openssl rand -base64 32
+  BETTER_AUTH_SECRET: z.string().min(32, "must be at least 32 characters"),
+  BETTER_AUTH_URL: z.string().url().default("http://localhost:3000"),
+
+  // Email (Resend). Required in production for verification + password reset.
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().email().optional(),
 
   // Rate limiting (window + max requests per window).
   RATE_LIMIT_WINDOW_MS: z.coerce
@@ -31,9 +34,6 @@ const envSchema = z.object({
     .default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
-
-  // How often to purge expired/revoked refresh tokens (minutes).
-  TOKEN_CLEANUP_INTERVAL_MIN: z.coerce.number().int().positive().default(60),
 
   SQIDS_MIN_LENGTH: z.coerce.number().int().min(0).default(6),
   SQIDS_ALPHABET: z.string().optional(),
@@ -45,4 +45,16 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+const env = parsed.data;
+
+if (env.NODE_ENV === "production") {
+  const missing: string[] = [];
+  if (!env.RESEND_API_KEY) missing.push("RESEND_API_KEY");
+  if (!env.EMAIL_FROM) missing.push("EMAIL_FROM");
+  if (missing.length) {
+    console.error(`Missing required production env: ${missing.join(", ")}`);
+    process.exit(1);
+  }
+}
+
+export { env };

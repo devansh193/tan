@@ -24,9 +24,11 @@ auth, and reversible short codes powered by a counter + bijective function.
   mapped to a short code with [Sqids](https://sqids.org). Because Sqids is a
   bijection, codes are reversible and **collision-free** — no random generation,
   no uniqueness retries. Optional **custom aliases** override the generated code.
-- **Custom token auth** — email + password with short-lived **access JWTs** and
-  rotating, hashed, DB-stored **refresh tokens**, including **reuse (theft)
-  detection** that revokes every session on replay of a spent token.
+- **Better Auth** — email + password authentication via
+  [Better Auth](https://better-auth.com), with the **bearer** plugin for
+  header-token API access (no cookies) and the **jwt** plugin exposing verifiable
+  **EdDSA JWTs** (`/api/auth/token`) plus a **JWKS** endpoint for stateless
+  validation by other services.
 - **Real features** — custom aliases, link expiry (410 Gone), soft-delete,
   per-click **analytics**, paginated listing, and "log out everywhere".
 - **Hardened by default** — Helmet, CORS allowlist, rate limiting, Zod
@@ -45,8 +47,9 @@ src/
   config/env.ts            # validated, typed environment config
   common/                  # errors, logger, async wrapper, middleware
   db/                      # drizzle schema, client, migrate runner
+  lib/auth.ts              # Better Auth instance (adapter, plugins, config)
   modules/
-    auth/                  # repository, service, controller, routes, tokens
+    auth/                  # requireAuth middleware (resolves Better Auth session)
     url/                   # repository, service, controller, routes, sqids
   app.ts                   # express app (middleware + routes)
   index.ts                 # server bootstrap + graceful shutdown
@@ -60,12 +63,12 @@ handle HTTP, services hold business logic, repositories own database access.
 
 | Concern       | Choice                                          |
 | ------------- | ----------------------------------------------- |
-| Runtime       | Node.js + TypeScript                            |
+| Runtime       | Bun + TypeScript                                |
 | Web framework | Express                                         |
 | Database      | PostgreSQL (via Docker)                         |
 | ORM / queries | Drizzle ORM                                     |
 | Short codes   | Sqids (bijective encoding)                      |
-| Auth          | bcryptjs + jsonwebtoken (custom, token-based)   |
+| Auth          | Better Auth (email/password, bearer + jwt)      |
 | Validation    | Zod                                             |
 | Logging       | Pino (+ pino-http request logging)              |
 | Security      | Helmet, CORS allowlist, express-rate-limit      |
@@ -75,11 +78,11 @@ handle HTTP, services hold business logic, repositories own database access.
 ## 🚀 Getting started
 
 ```bash
-npm install
+bun install
 cp .env.example .env          # then set JWT_ACCESS_SECRET
 docker compose up -d          # Postgres on host port 5433
-npm run db:push               # create the schema
-npm run dev                   # http://localhost:3000
+bun run db:push               # create the schema
+bun run dev                   # http://localhost:3000
 ```
 
 Prefer to run everything (API + DB) in Docker?
@@ -90,18 +93,18 @@ docker compose --profile full up --build
 
 ### Scripts
 
-| Script                | Purpose                     |
-| --------------------- | --------------------------- |
-| `npm run dev`         | Run with reload (tsx watch) |
-| `npm run build`       | Compile to `dist/`          |
-| `npm start`           | Run the compiled server     |
-| `npm test`            | Run the Vitest suite        |
-| `npm run lint`        | ESLint (type-aware)         |
-| `npm run format`      | Prettier write              |
-| `npm run typecheck`   | `tsc --noEmit`              |
-| `npm run db:push`     | Sync schema to the DB (dev) |
-| `npm run db:generate` | Generate SQL migrations     |
-| `npm run db:migrate`  | Apply migrations            |
+| Script                | Purpose                        |
+| --------------------- | ------------------------------ |
+| `bun run dev`         | Run with reload (bun --watch)  |
+| `bun run build`       | Compile to `dist/`             |
+| `bun start`           | Run the compiled server        |
+| `bun run test`        | Run the Vitest suite           |
+| `bun run lint`        | ESLint (type-aware)            |
+| `bun run format`      | Prettier write                 |
+| `bun run typecheck`   | `tsc --noEmit`                 |
+| `bun run db:push`     | Sync schema to the DB (dev)    |
+| `bun run db:generate` | Generate SQL migrations        |
+| `bun run db:migrate`  | Apply migrations               |
 
 ## 📡 API
 
@@ -179,7 +182,7 @@ curl -s -X POST localhost:3000/api/urls \
 ## 🧪 Testing
 
 ```bash
-npm test
+bun run test
 ```
 
 Unit tests cover the Sqids bijection, token signing/hashing, and the auth/URL

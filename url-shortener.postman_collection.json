@@ -1,13 +1,14 @@
 {
   "info": {
     "name": "URL Shortener",
-    "description": "Endpoints for the URL shortener (auth + shorten/redirect/analytics).\n\nCollection variables:\n- baseUrl: http://localhost:3000\n- accessToken / refreshToken: auto-filled by Register, Login, Refresh\n- shortCode: auto-filled by Create Short URL\n\nFlow: Register (or Login) -> Create Short URL -> List / Stats / Redirect -> Refresh -> Logout.",
+    "description": "Endpoints for the URL shortener (Better Auth + shorten/redirect/analytics).\n\nCollection variables:\n- baseUrl: http://localhost:3000\n- sessionToken: auto-filled from the `set-auth-token` response header on Sign Up / Sign In\n- verificationToken: paste the `token` query param from the verification email link\n- jwtToken: auto-filled by Get JWT Token (optional, for stateless validation)\n- shortCode: auto-filled by Create Short URL\n\nFlow (production): Sign Up -> check email -> Verify Email -> Sign In -> Create Short URL -> ...\nFlow (development): Sign Up -> Sign In -> Create Short URL -> ...\n\nAuth uses Better Auth with the bearer plugin. The session token is returned in the `set-auth-token` header — not in the JSON body. Use `Authorization: Bearer {{sessionToken}}` on protected routes.\n\nEmail verification is built into Better Auth at `GET /api/auth/verify-email?token=...` (no custom route file). In production, sign-in is blocked until verified.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:3000" },
-    { "key": "accessToken", "value": "" },
-    { "key": "refreshToken", "value": "" },
+    { "key": "sessionToken", "value": "" },
+    { "key": "verificationToken", "value": "" },
+    { "key": "jwtToken", "value": "" },
     { "key": "shortCode", "value": "" }
   ],
   "item": [
@@ -31,16 +32,38 @@
       "name": "Auth",
       "item": [
         {
-          "name": "Register",
+          "name": "Auth OK",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "const res = pm.response.json();",
-                  "if (res.accessToken) pm.collectionVariables.set('accessToken', res.accessToken);",
-                  "if (res.refreshToken) pm.collectionVariables.set('refreshToken', res.refreshToken);",
-                  "pm.test('201 Created', () => pm.response.to.have.status(201));"
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/ok",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "ok"]
+            }
+          }
+        },
+        {
+          "name": "Sign Up (email)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const token = pm.response.headers.get('set-auth-token');",
+                  "if (token) pm.collectionVariables.set('sessionToken', token);",
+                  "pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
                 ]
               }
             }
@@ -50,25 +73,72 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"
+              "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/auth/register",
+              "raw": "{{baseUrl}}/api/auth/sign-up/email",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "auth", "register"]
-            }
+              "path": ["api", "auth", "sign-up", "email"]
+            },
+            "description": "Creates an account. The session token is in the `set-auth-token` response header (bearer plugin).\n\nIn production, a verification email is sent and sign-in is blocked until verified."
           }
         },
         {
-          "name": "Login",
+          "name": "Send Verification Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/send-verification-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "send-verification-email"]
+            },
+            "description": "Resends the verification email. Use the same email as Sign Up.\n\nIn dev, the link is logged in the server console. In production, check your inbox or the Resend dashboard."
+          }
+        },
+        {
+          "name": "Verify Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 302]));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-email?token={{verificationToken}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "verify-email"],
+              "query": [{ "key": "token", "value": "{{verificationToken}}" }]
+            },
+            "description": "Better Auth built-in route — not a custom file in src/.\n\n1. Open the verification email from Sign Up (or Send Verification Email).\n2. Copy the `token` query param from the link, e.g.\n   `http://localhost:3000/api/auth/verify-email?token=PASTE_THIS`\n3. Set collection variable `verificationToken` to that value.\n4. Run this request (or just click the link in the email).\n\nThen run Sign In."
+          }
+        },
+        {
+          "name": "Sign In (email)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "const res = pm.response.json();",
-                  "if (res.accessToken) pm.collectionVariables.set('accessToken', res.accessToken);",
-                  "if (res.refreshToken) pm.collectionVariables.set('refreshToken', res.refreshToken);",
+                  "const token = pm.response.headers.get('set-auth-token');",
+                  "if (token) pm.collectionVariables.set('sessionToken', token);",
                   "pm.test('200 OK', () => pm.response.to.have.status(200));"
                 ]
               }
@@ -82,77 +152,134 @@
               "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/auth/login",
+              "raw": "{{baseUrl}}/api/auth/sign-in/email",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "auth", "login"]
+              "path": ["api", "auth", "sign-in", "email"]
             }
           }
         },
         {
-          "name": "Refresh",
+          "name": "Get Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/get-session",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "get-session"]
+            }
+          }
+        },
+        {
+          "name": "Get JWT Token",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "const res = pm.response.json();",
-                  "if (res.accessToken) pm.collectionVariables.set('accessToken', res.accessToken);",
-                  "if (res.refreshToken) pm.collectionVariables.set('refreshToken', res.refreshToken);",
+                  "if (res.token) pm.collectionVariables.set('jwtToken', res.token);",
                   "pm.test('200 OK', () => pm.response.to.have.status(200));"
                 ]
               }
             }
           ],
           "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
             "url": {
-              "raw": "{{baseUrl}}/api/auth/refresh",
+              "raw": "{{baseUrl}}/api/auth/token",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "auth", "refresh"]
-            }
+              "path": ["api", "auth", "token"]
+            },
+            "description": "Returns a verifiable EdDSA JWT (jwt plugin). Validate statelessly via JWKS."
           }
         },
         {
-          "name": "Logout",
+          "name": "JWKS",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/jwks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "jwks"]
+            },
+            "description": "Public keys for verifying JWTs from GET /api/auth/token."
+          }
+        },
+        {
+          "name": "Request Password Reset",
           "event": [
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('204 No Content', () => pm.response.to.have.status(204));"]
+                "exec": ["pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"]
               }
             }
           ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"redirectTo\": \"{{baseUrl}}/reset-password\"\n}"
+            },
             "url": {
-              "raw": "{{baseUrl}}/api/auth/logout",
+              "raw": "{{baseUrl}}/api/auth/request-password-reset",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "auth", "logout"]
-            }
+              "path": ["api", "auth", "request-password-reset"]
+            },
+            "description": "Sends a password reset email (logged in dev, sent via Resend in production)."
           }
         },
         {
-          "name": "Logout All",
+          "name": "Sign Out",
           "event": [
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('204 No Content', () => pm.response.to.have.status(204));"]
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
               }
             }
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
             "url": {
-              "raw": "{{baseUrl}}/api/auth/logout-all",
+              "raw": "{{baseUrl}}/api/auth/sign-out",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "auth", "logout-all"]
+              "path": ["api", "auth", "sign-out"]
             }
+          }
+        },
+        {
+          "name": "Revoke All Sessions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/revoke-sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "revoke-sessions"]
+            },
+            "description": "Signs out everywhere — invalidates all sessions for the user."
           }
         }
       ]
@@ -178,7 +305,7 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
             ],
             "body": {
               "mode": "raw",
@@ -196,7 +323,7 @@
           "name": "List My URLs",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
             "url": {
               "raw": "{{baseUrl}}/api/urls?limit=20&offset=0",
               "host": ["{{baseUrl}}"],
@@ -212,7 +339,7 @@
           "name": "URL Stats",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
             "url": {
               "raw": "{{baseUrl}}/api/urls/{{shortCode}}/stats",
               "host": ["{{baseUrl}}"],
@@ -232,7 +359,7 @@
           ],
           "request": {
             "method": "DELETE",
-            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
             "url": {
               "raw": "{{baseUrl}}/api/urls/{{shortCode}}",
               "host": ["{{baseUrl}}"],

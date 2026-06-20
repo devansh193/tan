@@ -2,7 +2,6 @@ import { createApp } from "./app";
 import { env } from "./config/env";
 import { pool } from "./db/client";
 import { logger } from "./common/logger";
-import { authRepository } from "./modules/auth/auth.repository";
 
 const app = createApp();
 
@@ -10,23 +9,12 @@ const server = app.listen(env.PORT, () => {
   logger.info(`URL shortener listening on ${env.BASE_URL} (port ${env.PORT})`);
 });
 
-// Periodically purge expired/revoked refresh tokens so the table stays small.
-const cleanupInterval = setInterval(
-  () => {
-    authRepository
-      .deleteSpentTokens()
-      .then((removed) => removed && logger.info({ removed }, "Purged spent refresh tokens"))
-      .catch((err) => logger.error({ err }, "Token cleanup failed"));
-  },
-  env.TOKEN_CLEANUP_INTERVAL_MIN * 60 * 1000,
-);
-// Don't keep the event loop alive solely for the timer.
-cleanupInterval.unref();
+// Better Auth manages session/token lifecycle and expiry internally, so no
+// background token-cleanup job is needed here.
 
-/** Closes the timer, HTTP server and DB pool so the process exits cleanly. */
+/** Closes the HTTP server and DB pool so the process exits cleanly. */
 const shutdown = (signal: string) => {
   logger.info(`${signal} received, shutting down...`);
-  clearInterval(cleanupInterval);
   server.close(() => {
     pool
       .end()

@@ -9,7 +9,8 @@ export default defineConfig({
     env: {
       NODE_ENV: "test",
       DATABASE_URL: "postgresql://test:test@localhost:5432/test",
-      JWT_ACCESS_SECRET: "test-secret",
+      BETTER_AUTH_SECRET: "01234567890123456789012345678901",
+      BETTER_AUTH_URL: "http://localhost:3000",
       BASE_URL: "http://localhost:3000",
     },
   },

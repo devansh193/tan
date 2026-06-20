@@ -3,11 +3,12 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { pinoHttp } from "pino-http";
+import { toNodeHandler } from "better-auth/node";
 import { env } from "./config/env";
 import { logger } from "./common/logger";
 import { pool } from "./db/client";
+import { auth } from "./lib/auth";
 import { asyncHandler } from "./common/asyncHandler";
-import { authRoutes } from "./modules/auth/auth.routes";
 import { urlRoutes } from "./modules/url/url.routes";
 import { urlController } from "./modules/url/url.controller";
 import { errorHandler, notFoundHandler } from "./common/middleware/errorHandler";
@@ -30,9 +31,26 @@ export const createApp = () => {
     }),
   );
   app.use(pinoHttp({ logger }));
+
+  // Better Auth owns every /api/auth/* route (sign-up/in, sign-out, and the
+  // jwt plugin's /token + /jwks). Its node handler reads the RAW request body,
+  // so it MUST be mounted before express.json(). A stricter limiter guards it.
+  const authLimiter = rateLimit({
+    windowMs: env.RATE_LIMIT_WINDOW_MS,
+    max: env.AUTH_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: rateLimitHandler,
+  });
+  // toNodeHandler returns a promise-returning handler; Express ignores the
+  // returned promise, so wrap it to satisfy the void-return expectation.
+  const authHandler = toNodeHandler(auth);
+  app.all("/api/auth/*", authLimiter, (req, res) => void authHandler(req, res));
+
+  // JSON parsing for the rest of the app (after the auth handler).
   app.use(express.json({ limit: "16kb" }));
 
-  // Global rate limit, with a stricter cap on auth endpoints.
+  // Global rate limit for the remaining routes.
   app.use(
     rateLimit({
       windowMs: env.RATE_LIMIT_WINDOW_MS,
@@ -42,13 +60,6 @@ export const createApp = () => {
       handler: rateLimitHandler,
     }),
   );
-  const authLimiter = rateLimit({
-    windowMs: env.RATE_LIMIT_WINDOW_MS,
-    max: env.AUTH_RATE_LIMIT_MAX,
-    standardHeaders: true,
-    legacyHeaders: false,
-    handler: rateLimitHandler,
-  });
 
   // Liveness (process up) and readiness (dependencies reachable) probes.
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
@@ -61,7 +72,6 @@ export const createApp = () => {
   );
 
   // API routes.
-  app.use("/api/auth", authLimiter, authRoutes);
   app.use("/api/urls", urlRoutes);
 
   // Public redirect: GET /:code -> original URL. Kept last so it never

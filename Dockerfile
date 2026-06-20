@@ -1,20 +1,19 @@
 # --- Build stage: compile TypeScript to dist/ ---
-FROM node:22-alpine AS build
+FROM oven/bun:1-alpine AS build
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build
+RUN bun run build
 
 # --- Runtime stage: production deps + compiled output only ---
-FROM node:22-alpine AS runtime
+FROM oven/bun:1-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
 COPY --from=build /app/dist ./dist
 EXPOSE 3000
-# Run as the built-in non-root user for safety.
-USER node
-CMD ["node", "dist/index.js"]
+USER bun
+CMD ["bun", "dist/index.js"]

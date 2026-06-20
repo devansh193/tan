@@ -3,8 +3,8 @@ import { db, pool } from "./client";
 
 /**
  * Applies any pending SQL migrations from ./drizzle, then exits.
- * Run after `npm run db:generate`. For quick local dev you can instead use
- * `npm run db:push` to sync the schema without migration files.
+ * Run after `bun run db:generate`. For quick local dev you can instead use
+ * `bun run db:push` to sync the schema without migration files.
  */
 async function main() {
   await migrate(db, { migrationsFolder: "./drizzle" });

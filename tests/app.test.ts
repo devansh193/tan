@@ -18,12 +18,12 @@ describe("app routing & guards", () => {
     expect(res.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("validates the register body", async () => {
+  it("rejects sign-up with an invalid email / short password", async () => {
     const res = await request(app)
-      .post("/api/auth/register")
-      .send({ email: "not-an-email", password: "short" });
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe("BAD_REQUEST");
+      .post("/api/auth/sign-up/email")
+      .send({ name: "x", email: "not-an-email", password: "short" });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
   });
 
   it("404s an unknown route", async () => {
@@ -33,9 +33,9 @@ describe("app routing & guards", () => {
 
   it("returns 400 for malformed JSON", async () => {
     const res = await request(app)
-      .post("/api/auth/register")
+      .post("/api/urls")
       .set("Content-Type", "application/json")
-      .send('{"email": ');
+      .send('{"url": ');
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("BAD_REQUEST");
   });
