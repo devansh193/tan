@@ -30,7 +30,7 @@ export const urls = pgTable(
   (t) => [index("urls_user_id_created_at_idx").on(t.userId, t.createdAt)],
 );
 
-/** One row per redirect, for analytics. IP is stored hashed for privacy. */
+/** One row per redirect, for analytics. */
 export const clicks = pgTable(
   "clicks",
   {
@@ -38,9 +38,17 @@ export const clicks = pgTable(
     urlId: bigint("url_id", { mode: "number" })
       .notNull()
       .references(() => urls.id, { onDelete: "cascade" }),
-    referrer: text("referrer"),
-    userAgent: text("user_agent"),
-    ipHash: text("ip_hash"),
+    ip: text("ip"),
+    country: text("country"),
+    state: text("state"),
+    city: text("city"),
+    browser: text("browser"),
+    os: text("os"),
+    device: text("device"),
+    referer: text("referer"),
+    utmSource: text("utm_source"),
+    utmMedium: text("utm_medium"),
+    utmCampaign: text("utm_campaign"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("clicks_url_id_idx").on(t.urlId)],

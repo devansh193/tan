@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
 import { ConflictError, GoneError, NotFoundError } from "../../common/errors";
 import { env } from "../../config/env";
 import { logger } from "../../common/logger";
 import type { Url } from "../../db/schema";
-import { UrlRepository, urlRepository, type ClickData, type CreateUrlData } from "./url.repository";
+import { buildClickData, type RedirectMeta } from "./click-analytics";
+import { UrlRepository, urlRepository, type CreateUrlData } from "./url.repository";
 import { decodeId, encodeId } from "./sqids";
 
 /** Aliases that would collide with real routes and are therefore disallowed. */
@@ -29,12 +29,7 @@ export interface PagedUrls {
   offset: number;
 }
 
-/** Request metadata recorded for analytics on each redirect. */
-export interface RedirectMeta {
-  referrer?: string;
-  userAgent?: string;
-  ip?: string;
-}
+export type { RedirectMeta } from "./click-analytics";
 
 /**
  * Business logic for shortening and resolving URLs. The default short code is
@@ -73,7 +68,7 @@ export class UrlService {
 
     // Record analytics without delaying the redirect; never let it reject loose.
     this.repo
-      .recordClick(url.id, this.toClickData(meta))
+      .recordClick(url.id, buildClickData(meta))
       .catch((err) => logger.error({ err, urlId: url.id }, "Failed to record click"));
 
     return url.originalUrl;
@@ -114,15 +109,6 @@ export class UrlService {
 
     const id = decodeId(code);
     return id === null ? undefined : this.repo.findById(id);
-  }
-
-  /** Hashes the client IP so analytics never store a raw address. */
-  private toClickData(meta: RedirectMeta): ClickData {
-    return {
-      referrer: meta.referrer,
-      userAgent: meta.userAgent,
-      ipHash: meta.ip ? createHash("sha256").update(meta.ip).digest("hex") : undefined,
-    };
   }
 
   /** Maps a DB row to the client-facing shape; alias wins over the Sqids code. */

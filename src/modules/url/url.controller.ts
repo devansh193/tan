@@ -39,10 +39,14 @@ export const urlController = {
 
   // GET /:code  (public) — resolve and redirect to the original URL.
   redirect: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const q = req.query;
     const originalUrl = await urlService.resolve(req.params.code, {
-      referrer: req.get("referer") ?? undefined,
+      referer: req.get("referer") ?? undefined,
       userAgent: req.get("user-agent") ?? undefined,
       ip: req.ip,
+      utmSource: typeof q.utm_source === "string" ? q.utm_source : undefined,
+      utmMedium: typeof q.utm_medium === "string" ? q.utm_medium : undefined,
+      utmCampaign: typeof q.utm_campaign === "string" ? q.utm_campaign : undefined,
     });
     res.redirect(302, originalUrl);
   }),

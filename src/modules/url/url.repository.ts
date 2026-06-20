@@ -12,9 +12,17 @@ export interface CreateUrlData {
 
 /** Metadata captured for a single redirect. */
 export interface ClickData {
-  referrer?: string;
-  userAgent?: string;
-  ipHash?: string;
+  ip?: string;
+  country?: string;
+  state?: string;
+  city?: string;
+  browser?: string;
+  os?: string;
+  device?: string;
+  referer?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
 }
 
 /** Data-access layer for shortened URLs and their click analytics. */
@@ -81,9 +89,17 @@ export class UrlRepository {
     await db.transaction(async (tx) => {
       await tx.insert(clicks).values({
         urlId: id,
-        referrer: data.referrer ?? null,
-        userAgent: data.userAgent ?? null,
-        ipHash: data.ipHash ?? null,
+        ip: data.ip ?? null,
+        country: data.country ?? null,
+        state: data.state ?? null,
+        city: data.city ?? null,
+        browser: data.browser ?? null,
+        os: data.os ?? null,
+        device: data.device ?? null,
+        referer: data.referer ?? null,
+        utmSource: data.utmSource ?? null,
+        utmMedium: data.utmMedium ?? null,
+        utmCampaign: data.utmCampaign ?? null,
       });
       await tx
         .update(urls)
