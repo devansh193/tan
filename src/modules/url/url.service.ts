@@ -74,29 +74,35 @@ export class UrlService {
     return url.originalUrl;
   }
 
-  /** Lists a user's URLs with pagination metadata. */
-  async listForUser(userId: string, limit: number, offset: number): Promise<PagedUrls> {
+  /** Lists an organization's URLs with pagination metadata. */
+  async listForOrganization(
+    organizationId: string,
+    limit: number,
+    offset: number,
+  ): Promise<PagedUrls> {
     const [rows, total] = await Promise.all([
-      this.repo.listByUser(userId, limit, offset),
-      this.repo.countByUser(userId),
+      this.repo.listByOrganization(organizationId, limit, offset),
+      this.repo.countByOrganization(organizationId),
     ]);
     return { items: rows.map((row) => this.toView(row)), total, limit, offset };
   }
 
-  /** Soft-deletes a URL the user owns. */
-  async remove(code: string, userId: string): Promise<void> {
+  /** Soft-deletes a URL owned by the caller's organization. */
+  async remove(code: string, organizationId: string): Promise<void> {
     const url = await this.lookup(code);
     if (!url) throw new NotFoundError("Short link not found");
 
-    const ok = await this.repo.softDelete(url.id, userId);
-    // Either the link doesn't exist or it isn't the caller's — same 404.
+    const ok = await this.repo.softDelete(url.id, organizationId);
+    // Either the link doesn't exist or it isn't the org's — same 404.
     if (!ok) throw new NotFoundError("Short link not found");
   }
 
-  /** Returns click stats for a URL the user owns. */
-  async stats(code: string, userId: string, recentLimit = 20) {
+  /** Returns click stats for a URL owned by the caller's organization. */
+  async stats(code: string, organizationId: string, recentLimit = 20) {
     const url = await this.lookup(code);
-    if (!url || url.userId !== userId) throw new NotFoundError("Short link not found");
+    if (!url || url.organizationId !== organizationId) {
+      throw new NotFoundError("Short link not found");
+    }
 
     const recent = await this.repo.recentClicks(url.id, recentLimit);
     return { ...this.toView(url), recentClicks: recent };

@@ -15,6 +15,13 @@
       "when": 1781941200000,
       "tag": "0001_click_analytics",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782036632772,
+      "tag": "0002_organization",
+      "breakpoints": true
     }
   ]
 }

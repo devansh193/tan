@@ -9,6 +9,7 @@ const makeUrl = (over: Partial<Url> = {}): Url => ({
   id: 1,
   originalUrl: "https://example.com",
   customAlias: null,
+  organizationId: "org-1",
   userId: "user-1",
   clickCount: 0,
   expiresAt: null,
@@ -21,8 +22,8 @@ const makeRepo = () => ({
   create: vi.fn(),
   findById: vi.fn(),
   findByAlias: vi.fn(),
-  listByUser: vi.fn(),
-  countByUser: vi.fn(),
+  listByOrganization: vi.fn(),
+  countByOrganization: vi.fn(),
   softDelete: vi.fn(),
   recordClick: vi.fn().mockResolvedValue(undefined),
   recentClicks: vi.fn(),
@@ -39,7 +40,11 @@ beforeEach(() => {
 describe("shorten", () => {
   it("returns the Sqids code when no alias is given", async () => {
     repo.create.mockResolvedValue(makeUrl({ id: 7 }));
-    const view = await service.shorten({ originalUrl: "https://x.com", userId: "user-1" });
+    const view = await service.shorten({
+      originalUrl: "https://x.com",
+      organizationId: "org-1",
+      userId: "user-1",
+    });
     expect(view.code).toBe(encodeId(7));
     expect(view.shortUrl).toBe(`http://localhost:3000/${encodeId(7)}`);
   });
@@ -48,6 +53,7 @@ describe("shorten", () => {
     repo.create.mockResolvedValue(makeUrl({ id: 7, customAlias: "promo" }));
     const view = await service.shorten({
       originalUrl: "https://x.com",
+      organizationId: "org-1",
       userId: "user-1",
       customAlias: "promo",
     });
@@ -56,14 +62,24 @@ describe("shorten", () => {
 
   it("rejects a reserved alias", async () => {
     await expect(
-      service.shorten({ originalUrl: "https://x.com", userId: "user-1", customAlias: "api" }),
+      service.shorten({
+        originalUrl: "https://x.com",
+        organizationId: "org-1",
+        userId: "user-1",
+        customAlias: "api",
+      }),
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
   it("maps a unique-violation to a 409", async () => {
     repo.create.mockRejectedValue({ code: "23505" });
     await expect(
-      service.shorten({ originalUrl: "https://x.com", userId: "user-1", customAlias: "taken" }),
+      service.shorten({
+        originalUrl: "https://x.com",
+        organizationId: "org-1",
+        userId: "user-1",
+        customAlias: "taken",
+      }),
     ).rejects.toBeInstanceOf(ConflictError);
   });
 });
@@ -95,11 +111,11 @@ describe("resolve", () => {
   });
 });
 
-describe("listForUser", () => {
+describe("listForOrganization", () => {
   it("returns items plus pagination metadata", async () => {
-    repo.listByUser.mockResolvedValue([makeUrl()]);
-    repo.countByUser.mockResolvedValue(1);
-    const page = await service.listForUser("user-1", 20, 0);
+    repo.listByOrganization.mockResolvedValue([makeUrl()]);
+    repo.countByOrganization.mockResolvedValue(1);
+    const page = await service.listForOrganization("org-1", 20, 0);
     expect(page).toMatchObject({ total: 1, limit: 20, offset: 0 });
     expect(page.items).toHaveLength(1);
   });
@@ -109,13 +125,13 @@ describe("remove", () => {
   it("404s when nothing was deleted", async () => {
     repo.findByAlias.mockResolvedValue(makeUrl());
     repo.softDelete.mockResolvedValue(false);
-    await expect(service.remove("promo", "user-1")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(service.remove("promo", "org-1")).rejects.toBeInstanceOf(NotFoundError);
   });
 });
 
 describe("stats", () => {
-  it("404s when the caller is not the owner", async () => {
-    repo.findByAlias.mockResolvedValue(makeUrl({ userId: "someone-else" }));
-    await expect(service.stats("promo", "user-1")).rejects.toBeInstanceOf(NotFoundError);
+  it("404s when the link belongs to another organization", async () => {
+    repo.findByAlias.mockResolvedValue(makeUrl({ organizationId: "other-org" }));
+    await expect(service.stats("promo", "org-1")).rejects.toBeInstanceOf(NotFoundError);
   });
 });
