@@ -11,6 +11,7 @@ export const urlController = {
     const { url, customAlias, expiresAt } = req.body;
     const view = await urlService.shorten({
       originalUrl: url,
+      organizationId: req.organizationId!,
       userId: req.userId!,
       customAlias,
       expiresAt,
@@ -18,22 +19,22 @@ export const urlController = {
     res.status(201).json(view);
   }),
 
-  // GET /api/urls  (auth) — list the caller's short links (paginated).
+  // GET /api/urls  (auth) — list the active org's short links (paginated).
   list: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { limit, offset } = res.locals.query as ListUrlsQuery;
-    const page = await urlService.listForUser(req.userId!, limit, offset);
+    const page = await urlService.listForOrganization(req.organizationId!, limit, offset);
     res.json(page);
   }),
 
-  // GET /api/urls/:code/stats  (auth) — click stats for an owned link.
+  // GET /api/urls/:code/stats  (auth) — click stats for an org-owned link.
   stats: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const view = await urlService.stats(req.params.code, req.userId!);
+    const view = await urlService.stats(req.params.code, req.organizationId!);
     res.json(view);
   }),
 
-  // DELETE /api/urls/:code  (auth) — soft-delete an owned link.
+  // DELETE /api/urls/:code  (auth) — soft-delete an org-owned link.
   remove: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    await urlService.remove(req.params.code, req.userId!);
+    await urlService.remove(req.params.code, req.organizationId!);
     res.status(204).send();
   }),
 

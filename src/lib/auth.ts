@@ -1,9 +1,10 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { bearer, jwt } from "better-auth/plugins";
+import { bearer, jwt, organization } from "better-auth/plugins";
 import { db } from "../db/client";
 import { env } from "../config/env";
 import { sendEmail } from "./email";
+import { ensurePersonalOrganization, getFirstOrganizationId } from "./org-bootstrap";
 import * as authSchema from "../db/auth-schema";
 
 const requireEmailVerification = env.NODE_ENV === "production";
@@ -19,6 +20,12 @@ const requireEmailVerification = env.NODE_ENV === "production";
  *   response header on sign-in/sign-up.
  * - `jwt()` exposes `GET /api/auth/token` (a verifiable EdDSA JWT) and
  *   `GET /api/auth/jwks` so other services can validate tokens statelessly.
+ * - `organization()` provides multitenancy: organizations (tenants), members
+ *   with roles, and email invitations, mounted under `/api/auth/organization/*`.
+ *
+ * Multitenancy bootstrap (see `databaseHooks` below): every new user gets a
+ * personal organization, and each new session is pinned to the user's first
+ * organization so the org-scoped URL routes always have an active tenant.
  *
  * Endpoints are mounted at `/api/auth/*` (see `app.ts`).
  */
@@ -74,7 +81,45 @@ export const auth = betterAuth({
     useSecureCookies: env.NODE_ENV === "production",
   },
 
-  plugins: [bearer(), jwt()],
+  // Multitenancy bootstrap. Keep these side effects out of the request path:
+  // create a personal org once per user, and resolve the active org per session.
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (createdUser) => {
+          await ensurePersonalOrganization(createdUser.id, createdUser.name);
+        },
+      },
+    },
+    session: {
+      create: {
+        before: async (newSession) => {
+          const activeOrganizationId = await getFirstOrganizationId(newSession.userId);
+          return { data: { ...newSession, activeOrganizationId } };
+        },
+      },
+    },
+  },
+
+  plugins: [
+    bearer(),
+    jwt(),
+    organization({
+      // Pending invites expire after 48 hours.
+      invitationExpiresIn: 60 * 60 * 48,
+      sendInvitationEmail: async ({ id, email, organization: org, inviter }) => {
+        const url = `${env.BASE_URL}/accept-invitation/${id}`;
+        await sendEmail({
+          to: email,
+          subject: `You've been invited to join ${org.name}`,
+          text:
+            `${inviter.user.name} (${inviter.user.email}) invited you to join ` +
+            `"${org.name}".\n\nAccept the invitation:\n\n${url}\n\n` +
+            `If you weren't expecting this, you can ignore this email.`,
+        });
+      },
+    }),
+  ],
 });
 
 /** Inferred session/user types for use across the app. */

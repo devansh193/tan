@@ -5,6 +5,7 @@ import { clicks, urls, type Click, type Url } from "../../db/schema";
 /** Fields needed to create a URL. */
 export interface CreateUrlData {
   originalUrl: string;
+  organizationId: string;
   userId: string;
   customAlias?: string;
   expiresAt?: Date;
@@ -33,6 +34,7 @@ export class UrlRepository {
       .insert(urls)
       .values({
         originalUrl: data.originalUrl,
+        organizationId: data.organizationId,
         userId: data.userId,
         customAlias: data.customAlias ?? null,
         expiresAt: data.expiresAt ?? null,
@@ -55,31 +57,37 @@ export class UrlRepository {
     });
   }
 
-  /** Lists a user's live URLs, newest first, with pagination. */
-  listByUser(userId: string, limit: number, offset: number): Promise<Url[]> {
+  /** Lists an organization's live URLs, newest first, with pagination. */
+  listByOrganization(organizationId: string, limit: number, offset: number): Promise<Url[]> {
     return db.query.urls.findMany({
-      where: and(eq(urls.userId, userId), isNull(urls.deletedAt)),
+      where: and(eq(urls.organizationId, organizationId), isNull(urls.deletedAt)),
       orderBy: desc(urls.createdAt),
       limit,
       offset,
     });
   }
 
-  /** Total count of a user's live URLs (for pagination metadata). */
-  async countByUser(userId: string): Promise<number> {
+  /** Total count of an organization's live URLs (for pagination metadata). */
+  async countByOrganization(organizationId: string): Promise<number> {
     const [row] = await db
       .select({ value: count() })
       .from(urls)
-      .where(and(eq(urls.userId, userId), isNull(urls.deletedAt)));
+      .where(and(eq(urls.organizationId, organizationId), isNull(urls.deletedAt)));
     return row.value;
   }
 
-  /** Soft-deletes a URL the user owns; returns true if a row was affected. */
-  async softDelete(id: number, userId: string): Promise<boolean> {
+  /** Soft-deletes a URL owned by the organization; true if a row was affected. */
+  async softDelete(id: number, organizationId: string): Promise<boolean> {
     const deleted = await db
       .update(urls)
       .set({ deletedAt: new Date() })
-      .where(and(eq(urls.id, id), eq(urls.userId, userId), isNull(urls.deletedAt)))
+      .where(
+        and(
+          eq(urls.id, id),
+          eq(urls.organizationId, organizationId),
+          isNull(urls.deletedAt),
+        ),
+      )
       .returning({ id: urls.id });
     return deleted.length > 0;
   }

@@ -1,5 +1,5 @@
 import { bigint, bigserial, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import { user } from "./auth-schema";
+import { organization, user } from "./auth-schema";
 
 // Authentication tables (user, session, account, verification, jwks) live in
 // `auth-schema.ts` and are owned by Better Auth. Re-export them so the rest of
@@ -19,6 +19,12 @@ export const urls = pgTable(
     id: bigserial("id", { mode: "number" }).primaryKey(),
     originalUrl: text("original_url").notNull(),
     customAlias: text("custom_alias").unique(),
+    // Tenant that owns the link. All management operations are scoped to the
+    // caller's active organization.
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    // The member who created the link (for attribution within the org).
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -27,7 +33,10 @@ export const urls = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("urls_user_id_created_at_idx").on(t.userId, t.createdAt)],
+  (t) => [
+    index("urls_organization_id_created_at_idx").on(t.organizationId, t.createdAt),
+    index("urls_user_id_created_at_idx").on(t.userId, t.createdAt),
+  ],
 );
 
 /** One row per redirect, for analytics. */

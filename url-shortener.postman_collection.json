@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "URL Shortener",
-    "description": "Endpoints for the URL shortener (Better Auth + shorten/redirect/analytics).\n\nCollection variables:\n- baseUrl: http://localhost:3000\n- sessionToken: auto-filled from the `set-auth-token` response header on Sign Up / Sign In\n- verificationToken: paste the `token` query param from the verification email link\n- jwtToken: auto-filled by Get JWT Token (optional, for stateless validation)\n- shortCode: auto-filled by Create Short URL\n\nFlow (production): Sign Up -> check email -> Verify Email -> Sign In -> Create Short URL -> ...\nFlow (development): Sign Up -> Sign In -> Create Short URL -> ...\n\nAuth uses Better Auth with the bearer plugin. The session token is returned in the `set-auth-token` header — not in the JSON body. Use `Authorization: Bearer {{sessionToken}}` on protected routes.\n\nEmail verification is built into Better Auth at `GET /api/auth/verify-email?token=...` (no custom route file). In production, sign-in is blocked until verified.",
+    "description": "Endpoints for the URL shortener (Better Auth + organization multitenancy + shorten/redirect/analytics).\n\nCollection variables:\n- baseUrl: http://localhost:3000\n- sessionToken: auto-filled from the `set-auth-token` response header on Sign Up / Sign In\n- verificationToken: paste the `token` query param from the verification email link\n- jwtToken: auto-filled by Get JWT Token (optional, for stateless validation)\n- shortCode: auto-filled by Create Short URL\n- organizationId: auto-filled by Create Organization / Get Session (the active tenant)\n- orgSlug: slug used when creating an organization\n- invitationId: auto-filled by Invite Member\n- memberId: auto-filled by List Members\n\nMULTITENANCY\nThe URL routes are tenant-scoped via the Better Auth organization plugin. On sign-up every user automatically gets a personal organization (as owner), and each new session is pinned to the user's first organization as the active tenant. All /api/urls operations act within the active organization. Switch tenants with `Organization > Set Active Organization`.\n\nFlow (production): Sign Up -> check email -> Verify Email -> Sign In -> (optional: Create Organization -> Set Active) -> Create Short URL -> ...\nFlow (development): Sign Up -> Sign In -> Create Short URL -> ...\n\nAuth uses Better Auth with the bearer plugin. The session token is returned in the `set-auth-token` header — not in the JSON body. Use `Authorization: Bearer {{sessionToken}}` on protected routes.\n\nEmail verification is built into Better Auth at `GET /api/auth/verify-email?token=...`. In production, sign-in is blocked until verified.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -9,7 +9,11 @@
     { "key": "sessionToken", "value": "" },
     { "key": "verificationToken", "value": "" },
     { "key": "jwtToken", "value": "" },
-    { "key": "shortCode", "value": "" }
+    { "key": "shortCode", "value": "" },
+    { "key": "organizationId", "value": "" },
+    { "key": "orgSlug", "value": "acme" },
+    { "key": "invitationId", "value": "" },
+    { "key": "memberId", "value": "" }
   ],
   "item": [
     {
@@ -80,7 +84,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "auth", "sign-up", "email"]
             },
-            "description": "Creates an account. The session token is in the `set-auth-token` response header (bearer plugin).\n\nIn production, a verification email is sent and sign-in is blocked until verified."
+            "description": "Creates an account. The session token is in the `set-auth-token` response header (bearer plugin).\n\nA personal organization is created automatically for the new user. In production, a verification email is sent and sign-in is blocked until verified."
           }
         },
         {
@@ -127,7 +131,7 @@
               "path": ["api", "auth", "verify-email"],
               "query": [{ "key": "token", "value": "{{verificationToken}}" }]
             },
-            "description": "Better Auth built-in route — not a custom file in src/.\n\n1. Open the verification email from Sign Up (or Send Verification Email).\n2. Copy the `token` query param from the link, e.g.\n   `http://localhost:3000/api/auth/verify-email?token=PASTE_THIS`\n3. Set collection variable `verificationToken` to that value.\n4. Run this request (or just click the link in the email).\n\nThen run Sign In."
+            "description": "Better Auth built-in route. Copy the `token` query param from the verification email link into the `verificationToken` collection variable, then run this (or click the link). Then run Sign In."
           }
         },
         {
@@ -164,7 +168,12 @@
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+                "exec": [
+                  "const res = pm.response.json();",
+                  "const orgId = res && res.session && res.session.activeOrganizationId;",
+                  "if (orgId) pm.collectionVariables.set('organizationId', orgId);",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
               }
             }
           ],
@@ -175,7 +184,8 @@
               "raw": "{{baseUrl}}/api/auth/get-session",
               "host": ["{{baseUrl}}"],
               "path": ["api", "auth", "get-session"]
-            }
+            },
+            "description": "Returns the current user + session. The session includes `activeOrganizationId` (the active tenant), captured here into the `organizationId` variable."
           }
         },
         {
@@ -285,7 +295,364 @@
       ]
     },
     {
+      "name": "Organization",
+      "description": "Multitenancy via the Better Auth organization plugin, mounted under /api/auth/organization/*. All routes require `Authorization: Bearer {{sessionToken}}`.",
+      "item": [
+        {
+          "name": "Check Slug",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"slug\": \"{{orgSlug}}\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/check-slug",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "check-slug"]
+            },
+            "description": "Checks whether an organization slug is available."
+          }
+        },
+        {
+          "name": "Create Organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "const id = res && (res.id || (res.organization && res.organization.id));",
+                  "if (id) pm.collectionVariables.set('organizationId', id);",
+                  "pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Inc\",\n  \"slug\": \"{{orgSlug}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "create"]
+            },
+            "description": "Creates a new organization with the caller as owner. Optional: `logo`, `metadata` (object), `keepCurrentActiveOrganization` (boolean). The new org id is captured into `organizationId`."
+          }
+        },
+        {
+          "name": "List Organizations",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/list",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "list"]
+            },
+            "description": "Lists organizations the current user belongs to."
+          }
+        },
+        {
+          "name": "Set Active Organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "const id = res && (res.id || (res.organization && res.organization.id));",
+                  "if (id) pm.collectionVariables.set('organizationId', id);",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationId\": \"{{organizationId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/set-active",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "set-active"]
+            },
+            "description": "Switches the active tenant for the current session. Pass `organizationId` or `organizationSlug`. Pass `organizationId: null` to clear it. After this, /api/urls operations act within this org."
+          }
+        },
+        {
+          "name": "Get Full Organization (active)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/get-full-organization",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "get-full-organization"]
+            },
+            "description": "Returns the active organization with members and invitations. Optionally pass `?organizationId=` or `?organizationSlug=` to target a specific org."
+          }
+        },
+        {
+          "name": "Update Organization",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"data\": {\n    \"name\": \"Acme International\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/update",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "update"]
+            },
+            "description": "Updates org fields. `data` may include `name`, `slug`, `logo`, `metadata`. Requires admin/owner role."
+          }
+        },
+        {
+          "name": "Invite Member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res && res.id) pm.collectionVariables.set('invitationId', res.id);",
+                  "pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"teammate@example.com\",\n  \"role\": \"member\",\n  \"organizationId\": \"{{organizationId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/invite-member",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "invite-member"]
+            },
+            "description": "Invites a user by email (role: owner | admin | member). Sends the invitation email (logged in dev). The invitation id is captured into `invitationId`. Pass `resend: true` to re-send a pending invite."
+          }
+        },
+        {
+          "name": "List Invitations",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/list-invitations?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "list-invitations"],
+              "query": [{ "key": "organizationId", "value": "{{organizationId}}" }]
+            },
+            "description": "Lists invitations for the organization."
+          }
+        },
+        {
+          "name": "Get Invitation",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/get-invitation?id={{invitationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "get-invitation"],
+              "query": [{ "key": "id", "value": "{{invitationId}}" }]
+            },
+            "description": "Fetches a single invitation by id (used by the accept-invitation page)."
+          }
+        },
+        {
+          "name": "Accept Invitation",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"invitationId\": \"{{invitationId}}\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/accept-invitation",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "accept-invitation"]
+            },
+            "description": "Accepts a pending invitation. Must be called while signed in as the invited user (the email must match)."
+          }
+        },
+        {
+          "name": "Reject Invitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"invitationId\": \"{{invitationId}}\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/reject-invitation",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "reject-invitation"]
+            },
+            "description": "Rejects a pending invitation (called by the invited user)."
+          }
+        },
+        {
+          "name": "Cancel Invitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"invitationId\": \"{{invitationId}}\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/cancel-invitation",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "cancel-invitation"]
+            },
+            "description": "Cancels a pending invitation (called by an admin/owner of the org)."
+          }
+        },
+        {
+          "name": "List Members",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "const members = (res && (res.members || res.data)) || [];",
+                  "if (members.length && members[0].id) pm.collectionVariables.set('memberId', members[0].id);",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/list-members?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "list-members"],
+              "query": [{ "key": "organizationId", "value": "{{organizationId}}" }]
+            },
+            "description": "Lists members of the organization. Captures the first member id into `memberId`."
+          }
+        },
+        {
+          "name": "Update Member Role",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"memberId\": \"{{memberId}}\",\n  \"role\": \"admin\",\n  \"organizationId\": \"{{organizationId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/update-member-role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "update-member-role"]
+            },
+            "description": "Changes a member's role (owner | admin | member). Requires admin/owner."
+          }
+        },
+        {
+          "name": "Remove Member",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"memberIdOrEmail\": \"teammate@example.com\",\n  \"organizationId\": \"{{organizationId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/remove-member",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "remove-member"]
+            },
+            "description": "Removes a member by member id or email. Requires admin/owner."
+          }
+        },
+        {
+          "name": "Leave Organization",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"organizationId\": \"{{organizationId}}\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/leave",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "leave"]
+            },
+            "description": "The current user leaves the organization. Owners must transfer ownership first."
+          }
+        },
+        {
+          "name": "Delete Organization",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"organizationId\": \"{{organizationId}}\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/organization/delete",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "organization", "delete"]
+            },
+            "description": "Permanently deletes the organization (and cascades its short links). Requires owner."
+          }
+        }
+      ]
+    },
+    {
       "name": "URLs",
+      "description": "Tenant-scoped short links. Every operation acts within the caller's active organization (set via Organization > Set Active Organization).",
       "item": [
         {
           "name": "Create Short URL",
@@ -316,11 +683,11 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "urls"]
             },
-            "description": "Optional fields: customAlias (3-32 chars) and expiresAt (future ISO date), e.g.\n{\n  \"url\": \"https://example.com\",\n  \"customAlias\": \"promo\",\n  \"expiresAt\": \"2030-01-01T00:00:00Z\"\n}"
+            "description": "Creates a short link owned by the active organization. Requires an active org (403 NO active organization otherwise).\n\nOptional fields: customAlias (3-32 chars) and expiresAt (future ISO date), e.g.\n{\n  \"url\": \"https://example.com\",\n  \"customAlias\": \"promo\",\n  \"expiresAt\": \"2030-01-01T00:00:00Z\"\n}"
           }
         },
         {
-          "name": "List My URLs",
+          "name": "List Org URLs",
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
@@ -332,7 +699,8 @@
                 { "key": "limit", "value": "20" },
                 { "key": "offset", "value": "0" }
               ]
-            }
+            },
+            "description": "Lists the active organization's short links (paginated)."
           }
         },
         {
@@ -344,7 +712,8 @@
               "raw": "{{baseUrl}}/api/urls/{{shortCode}}/stats",
               "host": ["{{baseUrl}}"],
               "path": ["api", "urls", "{{shortCode}}", "stats"]
-            }
+            },
+            "description": "Click stats for a link owned by the active organization."
           }
         },
         {
@@ -364,7 +733,8 @@
               "raw": "{{baseUrl}}/api/urls/{{shortCode}}",
               "host": ["{{baseUrl}}"],
               "path": ["api", "urls", "{{shortCode}}"]
-            }
+            },
+            "description": "Soft-deletes a link owned by the active organization."
           }
         },
         {
@@ -377,7 +747,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["{{shortCode}}"]
             },
-            "description": "Returns a 302 to the original URL (410 if expired). Tip: disable Settings > 'Automatically follow redirects' to see the 302 + Location header."
+            "description": "Public route — returns a 302 to the original URL (410 if expired). Tip: disable Settings > 'Automatically follow redirects' to see the 302 + Location header."
           }
         }
       ]
