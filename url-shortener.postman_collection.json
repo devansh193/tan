@@ -15,9 +15,39 @@
     { "key": "invitationId", "value": "" },
     { "key": "memberId", "value": "" }
   ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const baseUrl = pm.collectionVariables.get('baseUrl') || 'http://localhost:3000';",
+          "if (!pm.request.headers.get('Origin')) {",
+          "  pm.request.headers.add({ key: 'Origin', value: baseUrl });",
+          "}",
+          "const path = pm.request.url.getPath();",
+          "if (path.includes('/organization/check-slug') || path.includes('/organization/create')) {",
+          "  pm.collectionVariables.set('orgSlug', 'org-' + Date.now());",
+          "}"
+        ]
+      }
+    }
+  ],
   "item": [
     {
       "name": "Health",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+            ]
+          }
+        }
+      ],
       "request": {
         "method": "GET",
         "header": [],
@@ -26,6 +56,18 @@
     },
     {
       "name": "Ready",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('status ready', () => pm.expect(pm.response.json().status).to.eql('ready'));"
+            ]
+          }
+        }
+      ],
       "request": {
         "method": "GET",
         "header": [],
@@ -65,9 +107,12 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "const token = pm.response.headers.get('set-auth-token');",
-                  "if (token) pm.collectionVariables.set('sessionToken', token);",
-                  "pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                  "pm.test('2xx or user exists', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 422]));",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "  pm.test('set-auth-token header present', () => pm.expect(pm.response.headers.get('set-auth-token')).to.be.a('string').and.not.empty);",
+                  "  const token = pm.response.headers.get('set-auth-token');",
+                  "  if (token) pm.collectionVariables.set('sessionToken', token);",
+                  "}"
                 ]
               }
             }
@@ -141,9 +186,14 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('set-auth-token header present', () => pm.expect(pm.response.headers.get('set-auth-token')).to.be.a('string').and.not.empty);",
                   "const token = pm.response.headers.get('set-auth-token');",
                   "if (token) pm.collectionVariables.set('sessionToken', token);",
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  pm.test('user returned', () => pm.expect(res.user).to.be.an('object'));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -169,10 +219,17 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "const res = pm.response.json();",
-                  "const orgId = res && res.session && res.session.activeOrganizationId;",
-                  "if (orgId) pm.collectionVariables.set('organizationId', orgId);",
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  if (res && res.session) {",
+                  "    pm.test('session returned', () => pm.expect(res.session).to.be.an('object'));",
+                  "    const orgId = res.session.activeOrganizationId;",
+                  "    if (orgId) pm.collectionVariables.set('organizationId', orgId);",
+                  "  } else {",
+                  "    pm.test('session is null (signed out?)', () => pm.expect(res).to.be.null);",
+                  "  }",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -195,9 +252,11 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "const res = pm.response.json();",
-                  "if (res.token) pm.collectionVariables.set('jwtToken', res.token);",
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  if (res.token) pm.collectionVariables.set('jwtToken', res.token);",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -215,6 +274,21 @@
         },
         {
           "name": "JWKS",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  pm.test('keys array present', () => pm.expect(res.keys).to.be.an('array').and.not.empty);",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [],
@@ -301,7 +375,20 @@
         {
           "name": "Check Slug",
           "event": [
-            { "listen": "test", "script": { "exec": ["pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"] } }
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx or slug taken', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 400]));",
+                  "try {",
+                  "  if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    pm.test('slug available', () => pm.expect(pm.response.json().status).to.eql(true));",
+                  "  }",
+                  "} catch (e) {}"
+                ]
+              }
+            }
           ],
           "request": {
             "method": "POST",
@@ -325,10 +412,14 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "const res = pm.response.json();",
-                  "const id = res && (res.id || (res.organization && res.organization.id));",
-                  "if (id) pm.collectionVariables.set('organizationId', id);",
-                  "pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                  "pm.test('2xx or slug exists', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 400]));",
+                  "try {",
+                  "  if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    const res = pm.response.json();",
+                  "    pm.test('org id returned', () => pm.expect(res.id).to.be.a('string').and.not.empty);",
+                  "    if (res.id) pm.collectionVariables.set('organizationId', res.id);",
+                  "  }",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -353,6 +444,22 @@
         },
         {
           "name": "List Organizations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  pm.test('returns array', () => pm.expect(res).to.be.an('array'));",
+                  "  if (res.length && res[0].id) pm.collectionVariables.set('organizationId', res[0].id);",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
@@ -371,10 +478,12 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "const res = pm.response.json();",
-                  "const id = res && (res.id || (res.organization && res.organization.id));",
-                  "if (id) pm.collectionVariables.set('organizationId', id);",
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  const id = res && (res.id || (res.organization && res.organization.id));",
+                  "  if (id) pm.collectionVariables.set('organizationId', id);",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -399,6 +508,22 @@
         },
         {
           "name": "Get Full Organization (active)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  pm.test('org id present', () => pm.expect(res.id).to.be.a('string').and.not.empty);",
+                  "  pm.test('members array present', () => pm.expect(res.members).to.be.an('array'));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
@@ -440,9 +565,11 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "const res = pm.response.json();",
-                  "if (res && res.id) pm.collectionVariables.set('invitationId', res.id);",
-                  "pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                  "pm.test('2xx success', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  if (res && res.id) pm.collectionVariables.set('invitationId', res.id);",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -467,6 +594,21 @@
         },
         {
           "name": "List Invitations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  pm.test('returns array', () => pm.expect(res).to.be.an('array'));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
@@ -481,6 +623,23 @@
         },
         {
           "name": "Get Invitation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx or not found', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
+                  "try {",
+                  "  if (pm.response.code === 200) {",
+                  "    const res = pm.response.json();",
+                  "    pm.test('invitation id present', () => pm.expect(res.id).to.be.a('string').and.not.empty);",
+                  "  }",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
@@ -515,6 +674,17 @@
         },
         {
           "name": "Reject Invitation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx or expected error', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 403, 404]));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -532,6 +702,17 @@
         },
         {
           "name": "Cancel Invitation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx or expected error', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 403, 404]));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -554,10 +735,12 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "const res = pm.response.json();",
-                  "const members = (res && (res.members || res.data)) || [];",
-                  "if (members.length && members[0].id) pm.collectionVariables.set('memberId', members[0].id);",
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  const members = (res && (res.members || res.data)) || [];",
+                  "  if (members.length && members[0].id) pm.collectionVariables.set('memberId', members[0].id);",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -576,6 +759,17 @@
         },
         {
           "name": "Update Member Role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx or expected error', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 403, 404]));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -596,6 +790,17 @@
         },
         {
           "name": "Remove Member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx or expected error', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 403, 404]));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -616,6 +821,17 @@
         },
         {
           "name": "Leave Organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx or expected error', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 403, 404]));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -633,6 +849,17 @@
         },
         {
           "name": "Delete Organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx or expected error', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 403, 404]));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -661,9 +888,14 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "const res = pm.response.json();",
-                  "if (res.code) pm.collectionVariables.set('shortCode', res.code);",
-                  "pm.test('201 Created', () => pm.response.to.have.status(201));"
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  pm.test('code present', () => pm.expect(res.code).to.be.a('string').and.not.empty);",
+                  "  pm.test('shortUrl present', () => pm.expect(res.shortUrl).to.include(res.code));",
+                  "  pm.test('originalUrl present', () => pm.expect(res.originalUrl).to.be.a('string').and.not.empty);",
+                  "  if (res.code) pm.collectionVariables.set('shortCode', res.code);",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -688,6 +920,26 @@
         },
         {
           "name": "List Org URLs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  pm.test('items array', () => pm.expect(res.items).to.be.an('array'));",
+                  "  pm.test('pagination fields', () => {",
+                  "    pm.expect(res.total).to.be.a('number');",
+                  "    pm.expect(res.limit).to.be.a('number');",
+                  "    pm.expect(res.offset).to.be.a('number');",
+                  "  });",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
@@ -705,6 +957,22 @@
         },
         {
           "name": "URL Stats",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const res = pm.response.json();",
+                  "  pm.test('clickCount present', () => pm.expect(res.clickCount).to.be.a('number'));",
+                  "  pm.test('recentClicks array', () => pm.expect(res.recentClicks).to.be.an('array'));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
@@ -739,6 +1007,18 @@
         },
         {
           "name": "Redirect (follow short code)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('302 redirect', () => pm.response.to.have.status(302));",
+                  "pm.test('Location header present', () => pm.expect(pm.response.headers.get('Location')).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [],
