@@ -1,0 +1,20 @@
+meta {
+  name: Get Link
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/links/{{linkId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  test('same id', () => expect(res.getBody().id).to.equal(bru.getVar('linkId')));
+}

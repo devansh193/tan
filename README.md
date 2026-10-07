@@ -49,9 +49,13 @@ src/
   db/                      # drizzle schema, client, migrate runner
   lib/auth.ts              # Better Auth instance (adapter, plugins, config)
   modules/
-    auth/                  # requireAuth middleware (resolves Better Auth session)
-    url/                   # repository, service, controller, routes, codes,
-                           # redirect cache, batched click recorder
+    auth/                  # requireAuth / requireOrganization / requirePermission,
+                           # role → permission map
+    analytics/             # attribution, click parsing, batched recorder, click repo
+    links/                 # /api/v1/links: repository, service, schema, routes,
+                           # codes, redirect cache
+    redirect/              # public GET /:code[/:channel]
+  routes/v1.ts             # mounts /api/v1 resource groups behind auth + org guards
   app.ts                   # express app (middleware + routes)
   index.ts                 # server bootstrap + graceful shutdown
 tests/                     # unit + DB-free integration tests
@@ -137,22 +141,27 @@ All bodies are JSON. Authenticated endpoints require an
 Token responses: `{ "accessToken": "<jwt>", "refreshToken": "<opaque>" }`.
 Passwords are 8–72 characters; emails are normalised (trimmed + lowercased).
 
-### URLs
+### Links (v1)
 
-| Method | Path                    | Auth | Body / Query                        | Description                     |
-| ------ | ----------------------- | ---- | ----------------------------------- | ------------------------------- |
-| POST   | `/api/urls`             | yes  | `{ url, customAlias?, expiresAt? }` | Create a short link             |
-| GET    | `/api/urls`             | yes  | `?limit=20&offset=0`                | List own links (paginated)      |
-| GET    | `/api/urls/:code/stats` | yes  | —                                   | Click stats + recent clicks     |
-| DELETE | `/api/urls/:code`       | yes  | —                                   | Soft-delete an own link         |
-| GET    | `/:code`                | no   | —                                   | Redirect (302); 410 if expired  |
-| GET    | `/:code/:channel`       | no   | —                                   | Redirect, attributed to channel |
+See [docs/api/links.md](docs/api/links.md). All routes act on the session's
+active organization; links are addressed by their permanent `id` (`link_…`).
 
-`customAlias` is 3–32 chars (`A–Z a–z 0–9 _ -`) and 409s if it equals any
-existing code; `expiresAt` is a future ISO date. Reserved aliases (`api`,
-`health`, `ready`, …) are rejected. Target URLs must be http(s), must not embed
+| Method | Path                | Auth | Body / Query                 | Description                     |
+| ------ | ------------------- | ---- | ---------------------------- | ------------------------------- |
+| POST   | `/api/v1/links`     | yes  | `{ url, code?, expiresAt? }` | Create a link                   |
+| GET    | `/api/v1/links`     | yes  | `?limit&cursor&sort&order`   | List (cursor pagination)        |
+| GET    | `/api/v1/links/:id` | yes  | —                            | Read one link                   |
+| DELETE | `/api/v1/links/:id` | yes  | —                            | Soft-delete                     |
+| GET    | `/:code`            | no   | —                            | Redirect (302); 410 if expired  |
+| GET    | `/:code/:channel`   | no   | —                            | Redirect, attributed to channel |
+
+`code` is 3–32 chars (`A–Z a–z 0–9 _ -`) and 409s if it equals any existing
+code; `expiresAt` is a future ISO date. Reserved codes (`api`, `health`,
+`ready`, …) are rejected. Target URLs must be http(s), must not embed
 credentials (`https://bank.com@evil.com`) or point back at this shortener, and
 are checked against Google Safe Browsing when `SAFE_BROWSING_API_KEY` is set.
+Lists return `{ data, nextCursor }`; pass `?cursor=<nextCursor>` for the next
+page.
 
 ```bash
 # Register
@@ -161,7 +170,7 @@ curl -s -X POST localhost:3000/api/auth/register \
   -d '{"email":"a@b.com","password":"password123"}'
 
 # Shorten (use the accessToken from above)
-curl -s -X POST localhost:3000/api/urls \
+curl -s -X POST localhost:3000/api/v1/links \
   -H 'content-type: application/json' \
   -H 'authorization: Bearer <accessToken>' \
   -d '{"url":"https://example.com/some/long/path"}'
@@ -189,7 +198,8 @@ in-app browser (Instagram, Facebook, LinkedIn, TikTok, Threads…) → referrer
 (`t.co`, `lnkd.in`, …) → `unknown`. Link-preview crawlers (`Twitterbot`,
 `facebookexternalhit`, `LinkedInBot`, …) are not counted.
 
-`GET /api/urls/:code/stats` returns it in one call:
+The per-source breakdown moves to `GET /api/v1/analytics?groupBy=sources`
+(phase D of the v1 rollout); the shape is:
 
 ```json
 "sources": [
@@ -208,7 +218,7 @@ in-app browser (Instagram, Facebook, LinkedIn, TikTok, Threads…) → referrer
 - Rotation revokes the old token; replaying a revoked token revokes **all** of
   the user's sessions (theft response).
 - Access JWTs carry and are verified against an issuer and audience.
-- Rate limiting: strict caps on `/api/auth` and `/api/urls`, and a separate
+- Rate limiting: strict caps on `/api/auth` and `/api/v1`, and a separate
   per-minute cap on public redirects (`REDIRECT_RATE_LIMIT_MAX`). Set
   `REDIS_URL` to share counters across instances; if Redis is down, limits fail
   open rather than taking redirects down. Set `TRUST_PROXY` to match your proxy

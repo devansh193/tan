@@ -1,0 +1,38 @@
+meta {
+  name: Create Link
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/links
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "url": "https://aiengg.dev"
+  }
+}
+
+tests {
+  test('201 Created', () => expect(res.getStatus()).to.equal(201));
+  try {
+    const data = res.getBody();
+    test('public id', () => expect(data.id).to.match(/^link_[0-9A-Za-z]{24}$/));
+    test('Location header', () => expect(res.getHeader('location')).to.equal('/api/v1/links/' + data.id));
+    test('shortUrl contains code', () => expect(data.shortUrl).to.include(data.code));
+    test('shareUrls per channel', () => expect(data.shareUrls.instagram).to.equal(data.shortUrl + '/ig'));
+    if (data.id) bru.setVar('linkId', data.id);
+    if (data.code) bru.setVar('shortCode', data.code);
+  } catch (e) {}
+}
+
+docs {
+  Creates a link in the active organization. Optional: code (3-32 chars), expiresAt (future ISO date).
+}

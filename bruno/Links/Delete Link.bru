@@ -1,11 +1,11 @@
 meta {
-  name: Delete Short URL
+  name: Delete Link
   type: http
   seq: 99
 }
 
 delete {
-  url: {{baseUrl}}/api/urls/{{shortCode}}
+  url: {{baseUrl}}/api/v1/links/{{linkId}}
   body: none
   auth: bearer
 }

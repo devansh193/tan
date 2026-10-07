@@ -1,0 +1,34 @@
+meta {
+  name: List Links
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/links?limit=20&sort=createdAt&order=desc
+  body: none
+  auth: bearer
+}
+
+params:query {
+  limit: 20
+  sort: createdAt
+  order: desc
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  try {
+    const data = res.getBody();
+    test('data array', () => expect(data.data).to.be.an('array'));
+    test('nextCursor present', () => expect(data).to.have.property('nextCursor'));
+  } catch (e) {}
+}
+
+docs {
+  One keyset page. Pass ?cursor=<nextCursor> for the next page; nextCursor is null on the last page.
+}

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "URL Shortener",
-    "description": "Endpoints for the URL shortener (Better Auth + organization multitenancy + shorten/redirect/analytics).\n\nCollection variables:\n- baseUrl: http://localhost:3000\n- sessionToken: auto-filled from the `set-auth-token` response header on Sign Up / Sign In\n- verificationToken: paste the `token` query param from the verification email link\n- jwtToken: auto-filled by Get JWT Token (optional, for stateless validation)\n- shortCode: auto-filled by Create Short URL\n- organizationId: auto-filled by Create Organization / Get Session (the active tenant)\n- orgSlug: slug used when creating an organization\n- invitationId: auto-filled by Invite Member\n- memberId: auto-filled by List Members\n\nMULTITENANCY\nThe URL routes are tenant-scoped via the Better Auth organization plugin. On sign-up every user automatically gets a personal organization (as owner), and each new session is pinned to the user's first organization as the active tenant. All /api/urls operations act within the active organization. Switch tenants with `Organization > Set Active Organization`.\n\nFlow (production): Sign Up -> check email -> Verify Email -> Sign In -> (optional: Create Organization -> Set Active) -> Create Short URL -> ...\nFlow (development): Sign Up -> Sign In -> Create Short URL -> ...\n\nAuth uses Better Auth with the bearer plugin. The session token is returned in the `set-auth-token` header — not in the JSON body. Use `Authorization: Bearer {{sessionToken}}` on protected routes.\n\nEmail verification is built into Better Auth at `GET /api/auth/verify-email?token=...`. In production, sign-in is blocked until verified.",
+    "description": "Endpoints for the URL shortener (Better Auth + organization multitenancy + shorten/redirect/analytics).\n\nCollection variables:\n- baseUrl: http://localhost:3000\n- sessionToken: auto-filled from the `set-auth-token` response header on Sign Up / Sign In\n- verificationToken: paste the `token` query param from the verification email link\n- jwtToken: auto-filled by Get JWT Token (optional, for stateless validation)\n- shortCode: auto-filled by Create Short URL\n- organizationId: auto-filled by Create Organization / Get Session (the active tenant)\n- orgSlug: slug used when creating an organization\n- invitationId: auto-filled by Invite Member\n- memberId: auto-filled by List Members\n\nMULTITENANCY\nThe URL routes are tenant-scoped via the Better Auth organization plugin. On sign-up every user automatically gets a personal organization (as owner), and each new session is pinned to the user's first organization as the active tenant. All /api/v1 operations act within the active organization. Switch tenants with `Organization > Set Active Organization`.\n\nFlow (production): Sign Up -> check email -> Verify Email -> Sign In -> (optional: Create Organization -> Set Active) -> Create Short URL -> ...\nFlow (development): Sign Up -> Sign In -> Create Short URL -> ...\n\nAuth uses Better Auth with the bearer plugin. The session token is returned in the `set-auth-token` header — not in the JSON body. Use `Authorization: Bearer {{sessionToken}}` on protected routes.\n\nEmail verification is built into Better Auth at `GET /api/auth/verify-email?token=...`. In production, sign-in is blocked until verified.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -9,6 +9,7 @@
     { "key": "sessionToken", "value": "" },
     { "key": "verificationToken", "value": "" },
     { "key": "jwtToken", "value": "" },
+    { "key": "linkId", "value": "" },
     { "key": "shortCode", "value": "" },
     { "key": "organizationId", "value": "" },
     { "key": "orgSlug", "value": "acme" },
@@ -503,7 +504,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "auth", "organization", "set-active"]
             },
-            "description": "Switches the active tenant for the current session. Pass `organizationId` or `organizationSlug`. Pass `organizationId: null` to clear it. After this, /api/urls operations act within this org."
+            "description": "Switches the active tenant for the current session. Pass `organizationId` or `organizationSlug`. Pass `organizationId: null` to clear it. After this, /api/v1 operations act within this org."
           }
         },
         {
@@ -878,24 +879,22 @@
       ]
     },
     {
-      "name": "URLs",
+      "name": "Links",
       "description": "Tenant-scoped short links. Every operation acts within the caller's active organization (set via Organization > Set Active Organization).",
       "item": [
         {
-          "name": "Create Short URL",
+          "name": "Create Link",
           "event": [
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
                   "pm.test('201 Created', () => pm.response.to.have.status(201));",
-                  "try {",
-                  "  const res = pm.response.json();",
-                  "  pm.test('code present', () => pm.expect(res.code).to.be.a('string').and.not.empty);",
-                  "  pm.test('shortUrl present', () => pm.expect(res.shortUrl).to.include(res.code));",
-                  "  pm.test('originalUrl present', () => pm.expect(res.originalUrl).to.be.a('string').and.not.empty);",
-                  "  if (res.code) pm.collectionVariables.set('shortCode', res.code);",
-                  "} catch (e) {}"
+                  "const d = pm.response.json();",
+                  "pm.test('public id', () => pm.expect(d.id).to.match(/^link_[0-9A-Za-z]{24}$/));",
+                  "pm.collectionVariables.set('linkId', d.id);",
+                  "pm.collectionVariables.set('shortCode', d.code);"
                 ]
               }
             }
@@ -908,18 +907,19 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"url\": \"https://example.com/some/very/long/path?with=query\"\n}"
+              "raw": "{\n  \"url\": \"https://aiengg.dev\"\n}",
+              "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/urls",
+              "raw": "{{baseUrl}}/api/v1/links",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "urls"]
+              "path": ["api", "v1", "links"]
             },
-            "description": "Creates a short link owned by the active organization. Requires an active org (403 NO active organization otherwise).\n\nOptional fields: customAlias (3-32 chars) and expiresAt (future ISO date), e.g.\n{\n  \"url\": \"https://example.com\",\n  \"customAlias\": \"promo\",\n  \"expiresAt\": \"2030-01-01T00:00:00Z\"\n}"
+            "description": "Creates a link in the active organization (403 if none is active).\n\nOptional fields: code (3-32 chars) and expiresAt (future ISO date). Unknown fields return 400.\n\nCaptures linkId and shortCode."
           }
         },
         {
-          "name": "List Org URLs",
+          "name": "List Links",
           "event": [
             {
               "listen": "test",
@@ -927,15 +927,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('200 OK', () => pm.response.to.have.status(200));",
-                  "try {",
-                  "  const res = pm.response.json();",
-                  "  pm.test('items array', () => pm.expect(res.items).to.be.an('array'));",
-                  "  pm.test('pagination fields', () => {",
-                  "    pm.expect(res.total).to.be.a('number');",
-                  "    pm.expect(res.limit).to.be.a('number');",
-                  "    pm.expect(res.offset).to.be.a('number');",
-                  "  });",
-                  "} catch (e) {}"
+                  "pm.test('page shape', () => { const d = pm.response.json(); pm.expect(d.data).to.be.an('array'); pm.expect(d).to.have.property('nextCursor'); });"
                 ]
               }
             }
@@ -944,19 +936,20 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
             "url": {
-              "raw": "{{baseUrl}}/api/urls?limit=20&offset=0",
+              "raw": "{{baseUrl}}/api/v1/links?limit=20&sort=createdAt&order=desc",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "urls"],
+              "path": ["api", "v1", "links"],
               "query": [
                 { "key": "limit", "value": "20" },
-                { "key": "offset", "value": "0" }
+                { "key": "sort", "value": "createdAt" },
+                { "key": "order", "value": "desc" }
               ]
             },
-            "description": "Lists the active organization's short links (paginated)."
+            "description": "One keyset page of the active organization's links. Pass ?cursor=<nextCursor> for the next page; nextCursor is null on the last page."
           }
         },
         {
-          "name": "URL Stats",
+          "name": "Get Link",
           "event": [
             {
               "listen": "test",
@@ -964,11 +957,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('200 OK', () => pm.response.to.have.status(200));",
-                  "try {",
-                  "  const res = pm.response.json();",
-                  "  pm.test('clickCount present', () => pm.expect(res.clickCount).to.be.a('number'));",
-                  "  pm.test('recentClicks array', () => pm.expect(res.recentClicks).to.be.an('array'));",
-                  "} catch (e) {}"
+                  "pm.test('same id', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('linkId')));"
                 ]
               }
             }
@@ -977,32 +966,11 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
             "url": {
-              "raw": "{{baseUrl}}/api/urls/{{shortCode}}/stats",
+              "raw": "{{baseUrl}}/api/v1/links/{{linkId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "urls", "{{shortCode}}", "stats"]
+              "path": ["api", "v1", "links", "{{linkId}}"]
             },
-            "description": "Click stats for a link owned by the active organization."
-          }
-        },
-        {
-          "name": "Delete Short URL",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": ["pm.test('204 No Content', () => pm.response.to.have.status(204));"]
-              }
-            }
-          ],
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
-            "url": {
-              "raw": "{{baseUrl}}/api/urls/{{shortCode}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "urls", "{{shortCode}}"]
-            },
-            "description": "Soft-deletes a link owned by the active organization."
+            "description": "Reads one link by its permanent id (404 if it belongs to another organization)."
           }
         },
         {
@@ -1028,6 +996,27 @@
               "path": ["{{shortCode}}"]
             },
             "description": "Public route — returns a 302 to the original URL (410 if expired). Tip: disable Settings > 'Automatically follow redirects' to see the 302 + Location header."
+          }
+        },
+        {
+          "name": "Delete Link",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('204 No Content', () => pm.response.to.have.status(204));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/links/{{linkId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "links", "{{linkId}}"]
+            },
+            "description": "Soft-deletes a link. Members may delete only links they created (403 otherwise)."
           }
         }
       ]

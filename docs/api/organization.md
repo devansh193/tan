@@ -7,7 +7,7 @@ Conventions (base URL, bearer auth, `Origin` header, error format) are in [auth.
 **Model**
 
 - Every user gets a personal organization on sign-up (`"<name>'s Organization"`, they are `owner`).
-- Each session has one **active organization**; new sessions start on the user's first org. All `/api/urls` routes act on it.
+- Each session has one **active organization**; new sessions start on the user's first org. All `/api/v1` routes act on it.
 - Roles: `owner`, `admin`, `member`.
 
 | Action | owner | admin | member |
@@ -16,7 +16,7 @@ Conventions (base URL, bearer auth, `Origin` header, error format) are in [auth.
 | Delete org | ✓ | – | – |
 | Invite / cancel invitation | ✓ | ✓ | – |
 | Update member role / remove member | ✓ | ✓ | – |
-| Delete any org link (`DELETE /api/urls/:code`) | ✓ | ✓ | own only |
+| Delete any org link (`DELETE /api/v1/links/:id`) | ✓ | ✓ | own only |
 
 Invitations expire after **48 hours**. The invite email links to `BASE_URL/accept-invitation/<invitationId>`.
 
@@ -347,7 +347,7 @@ Owner/admin only. `memberId` is the **member** id (from `list-members`), not the
 
 ### POST `/api/auth/organization/remove-member`
 
-Owner/admin only. The removed user loses access immediately (also enforced by `/api/urls`, which re-checks membership on every request).
+Owner/admin only. The removed user loses access immediately (also enforced by `/api/v1`, which re-checks membership on every request).
 
 **Request**
 

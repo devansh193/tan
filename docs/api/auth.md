@@ -23,7 +23,7 @@ Better Auth routes (`/api/auth/*`):
 { "message": "Invalid email or password", "code": "INVALID_EMAIL_OR_PASSWORD" }
 ```
 
-App routes (`/api/urls`, redirects, health):
+App routes (`/api/v1/*`, redirects, health):
 
 ```json
 { "error": { "code": "BAD_REQUEST", "message": "url: must be an http(s) URL" } }
@@ -93,7 +93,7 @@ Password: 8–72 characters. In `production`, email verification is required bef
 }
 ```
 
-> The sign-up session is created **before** the personal org exists, so it has no active organization. Sign in once to get a session pinned to the org before calling `/api/urls`.
+> The sign-up session is created **before** the personal org exists, so it has no active organization. Sign in once to get a session pinned to the org before calling `/api/v1`.
 
 **Errors**
 

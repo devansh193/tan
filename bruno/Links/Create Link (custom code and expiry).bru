@@ -1,0 +1,39 @@
+meta {
+  name: Create Link (custom code and expiry)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/links
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "url": "https://aiengg.dev",
+    "code": "{{customCode}}",
+    "expiresAt": "2030-01-01T00:00:00Z"
+  }
+}
+
+script:pre-request {
+  // Fresh code each run so re-runs don't hit 409.
+  bru.setVar('customCode', 'promo-' + Date.now());
+}
+
+tests {
+  test('201 Created', () => expect(res.getStatus()).to.equal(201));
+  test('code is the custom code', () => expect(res.getBody().code).to.equal(bru.getVar('customCode')));
+}
+
+docs {
+  code: 3-32 chars of letters, digits, `-` or `_` (409 if taken or reserved).
+  expiresAt: ISO date in the future; redirect returns 410 after it.
+  Unknown fields (e.g. the old customAlias) return 400.
+}
