@@ -21,6 +21,9 @@ describe("cursor", () => {
       Buffer.from('{"k":1}').toString("base64url"),
       Buffer.from('{"k":{},"id":"x"}').toString("base64url"),
       encodeCursor({ k: 1, id: "link_x" }).slice(0, -3),
+      // Postgres rejects NUL in text params (22021) — must be a 400, not a 500.
+      encodeCursor({ k: 1, id: "link_a\u0000b" }),
+      encodeCursor({ k: 1, id: "not-an-id" }),
     ];
     for (const raw of bad) expect(() => decodeCursor(raw)).toThrow(BadRequestError);
   });

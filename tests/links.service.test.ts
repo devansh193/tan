@@ -143,6 +143,23 @@ describe("list", () => {
     expect(repo.list).not.toHaveBeenCalled();
   });
 
+  it("rejects date keys Date.parse accepts but Postgres can't cast", async () => {
+    for (const k of [
+      "1",
+      "0",
+      "2022",
+      "Mar 1",
+      "2020-02-30T00:00:00Z",
+      "+275760-09-13T00:00:00.000Z",
+    ]) {
+      const cursor = encodeCursor({ k, id: "link_b" });
+      await expect(service.list("org-1", { ...input, cursor })).rejects.toBeInstanceOf(
+        BadRequestError,
+      );
+    }
+    expect(repo.list).not.toHaveBeenCalled();
+  });
+
   it("rejects a clicks cursor whose key is not a number", async () => {
     const cursor = encodeCursor({ k: "abc", id: "link_b" });
     await expect(

@@ -56,13 +56,19 @@ export interface ListLinksInput {
 const isUniqueViolation = (err: unknown) =>
   !!err && typeof err === "object" && "code" in err && err.code === PG_UNIQUE_VIOLATION;
 
+/** Exactly what `Date#toISOString` emits; `Date.parse` alone accepts "1", "Mar 1", … */
+const ISO_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 /** A cursor's key must match the sort, or Postgres would 500 on the cast. */
 const checkCursor = (raw: string, sort: LinkSort): Cursor => {
   const cursor = decodeCursor(raw);
   const valid =
     sort === "clicks"
       ? Number.isSafeInteger(cursor.k)
-      : typeof cursor.k === "string" && !Number.isNaN(Date.parse(cursor.k));
+      : typeof cursor.k === "string" &&
+        ISO_MS.test(cursor.k) &&
+        // Round-trip rejects impossible dates such as 2020-02-30.
+        new Date(cursor.k).toISOString() === cursor.k;
   if (!valid) throw new BadRequestError("cursor: invalid");
   return cursor;
 };

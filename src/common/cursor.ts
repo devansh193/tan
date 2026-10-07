@@ -9,7 +9,9 @@ export interface Cursor {
 
 const cursorSchema = z.object({
   k: z.union([z.string().max(64), z.number()]),
-  id: z.string().min(1).max(64),
+  // A prefixed public id (`link_…`); anything else (NUL bytes, free text) would
+  // reach Postgres as a bound parameter and fail there with a 500.
+  id: z.string().regex(/^[a-z]+_[0-9A-Za-z]{1,32}$/),
 });
 
 /** Opaque, URL-safe cursor for `?cursor=`. */
