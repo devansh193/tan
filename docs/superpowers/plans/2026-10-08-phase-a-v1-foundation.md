@@ -5,6 +5,7 @@
 **Goal:** Replace `/api/urls` with a versioned, resource-grouped `/api/v1/links` API. Links are addressed by immutable public IDs, listed with keyset (cursor) pagination, and guarded by a role → permission check. The `url` module is split into `links/`, `analytics/` and `redirect/`.
 
 **Architecture:**
+
 - **Express routing:** the router `src/routes/v1.ts` mounts resource groups behind `requireAuth`, `requireOrganization`, then a per-route `requirePermission`.
 - **Links:** `links/` owns link CRUD.
 - **Analytics:** `analytics/` owns click capture (attribution, recorder, click repository).
@@ -47,21 +48,21 @@
 
 ## File map
 
-| File | Responsibility |
-| ---- | -------------- |
-| `src/common/ids.ts` (new) | CSPRNG base62 strings, prefixed public IDs |
-| `src/common/cursor.ts` (new) | Opaque keyset cursor encode/decode |
-| `src/common/middleware/rate-limit.ts` (new, moved out of `app.ts`) | Redis-backed `limiter()` factory |
-| `src/modules/auth/permissions.ts` (new) | Access-control statements, roles, `can()`, `canManageAll()` |
-| `src/modules/auth/auth.middleware.ts` (modify) | `req.roles`; new `requirePermission()` |
-| `src/lib/auth.ts` (modify) | Pass `ac` and `roles` to `organization()` |
-| `src/db/schema.ts` (modify) + `drizzle/0006_link_public_id.sql` | `public_id`, `created_at(3)`, keyset indexes |
-| `src/modules/analytics/{attribution,click-analytics,click-recorder,analytics.repository}.ts` | Click capture (moved from `url/`) |
-| `src/modules/links/{codes,sqids,link-cache,links.repository,links.service,links.schema,links.controller,links.routes}.ts` | Link CRUD (replaces `url/`) |
-| `src/modules/redirect/{redirect.service,redirect.controller,redirect.routes}.ts` | Public `/:code[/:channel]` |
-| `src/routes/v1.ts` (new) | Mounts v1 groups behind auth + org guards |
-| `src/app.ts`, `src/index.ts`, `src/db/migrate.ts` (modify) | Wiring |
-| `src/modules/url/` (delete) | Replaced |
+| File                                                                                                                      | Responsibility                                              |
+| ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `src/common/ids.ts` (new)                                                                                                 | CSPRNG base62 strings, prefixed public IDs                  |
+| `src/common/cursor.ts` (new)                                                                                              | Opaque keyset cursor encode/decode                          |
+| `src/common/middleware/rate-limit.ts` (new, moved out of `app.ts`)                                                        | Redis-backed `limiter()` factory                            |
+| `src/modules/auth/permissions.ts` (new)                                                                                   | Access-control statements, roles, `can()`, `canManageAll()` |
+| `src/modules/auth/auth.middleware.ts` (modify)                                                                            | `req.roles`; new `requirePermission()`                      |
+| `src/lib/auth.ts` (modify)                                                                                                | Pass `ac` and `roles` to `organization()`                   |
+| `src/db/schema.ts` (modify) + `drizzle/0006_link_public_id.sql`                                                           | `public_id`, `created_at(3)`, keyset indexes                |
+| `src/modules/analytics/{attribution,click-analytics,click-recorder,analytics.repository}.ts`                              | Click capture (moved from `url/`)                           |
+| `src/modules/links/{codes,sqids,link-cache,links.repository,links.service,links.schema,links.controller,links.routes}.ts` | Link CRUD (replaces `url/`)                                 |
+| `src/modules/redirect/{redirect.service,redirect.controller,redirect.routes}.ts`                                          | Public `/:code[/:channel]`                                  |
+| `src/routes/v1.ts` (new)                                                                                                  | Mounts v1 groups behind auth + org guards                   |
+| `src/app.ts`, `src/index.ts`, `src/db/migrate.ts` (modify)                                                                | Wiring                                                      |
+| `src/modules/url/` (delete)                                                                                               | Replaced                                                    |
 
 ---
 
@@ -89,6 +90,7 @@ git commit -m "docs: link platform v1 design spec and phase A plan"
 ### Task 1: IDs, codes and cursor utilities
 
 **Files:**
+
 - Create: `src/common/ids.ts`, `src/common/cursor.ts`, `src/modules/links/codes.ts`
 - Move: `src/modules/url/sqids.ts` → `src/modules/links/sqids.ts`
 - Delete: `src/modules/url/short-code.ts`
@@ -96,6 +98,7 @@ git commit -m "docs: link platform v1 design spec and phase A plan"
 - Test: `tests/ids.test.ts`, `tests/cursor.test.ts`, `tests/sqids.test.ts` (import path)
 
 **Interfaces:**
+
 - Produces:
   - `randomBase62(length: number): string`
   - `newPublicId(prefix: "link" | "tag"): string`
@@ -108,6 +111,7 @@ git commit -m "docs: link platform v1 design spec and phase A plan"
 - [ ] **Step 1: Write the failing tests**
 
 `tests/ids.test.ts`:
+
 ```ts
 import { describe, it, expect } from "vitest";
 import { newPublicId, randomBase62 } from "../src/common/ids";
@@ -143,6 +147,7 @@ describe("codes", () => {
 ```
 
 `tests/cursor.test.ts`:
+
 ```ts
 import { describe, it, expect } from "vitest";
 import { decodeCursor, encodeCursor } from "../src/common/cursor";
@@ -181,6 +186,7 @@ Expected: FAIL. The modules `../src/common/ids` and `../src/common/cursor` can't
 - [ ] **Step 3: Implement**
 
 `src/common/ids.ts`:
+
 ```ts
 import { randomInt } from "node:crypto";
 
@@ -201,6 +207,7 @@ export const newPublicId = (prefix: "link" | "tag"): string => `${prefix}_${rand
 ```
 
 `src/common/cursor.ts`:
+
 ```ts
 import { z } from "zod";
 import { BadRequestError } from "./errors";
@@ -231,6 +238,7 @@ export const decodeCursor = (raw: string): Cursor => {
 ```
 
 `src/modules/links/codes.ts`:
+
 ```ts
 import { randomBase62 } from "../../common/ids";
 
@@ -257,12 +265,14 @@ export const isPossibleCode = (code: string): boolean =>
 ```
 
 Move sqids and delete the old generator:
+
 ```bash
 git mv src/modules/url/sqids.ts src/modules/links/sqids.ts
 git rm src/modules/url/short-code.ts
 ```
 
 In `src/db/migrate.ts`, replace the two imports:
+
 ```ts
 import { encodeId } from "../modules/links/sqids";
 import { generateCode } from "../modules/links/codes";
@@ -289,11 +299,13 @@ git commit -m "feat: base62 public ids, keyset cursor, shared code rules"
 ### Task 2: Permissions, `requirePermission`, rate-limit module
 
 **Files:**
+
 - Create: `src/modules/auth/permissions.ts`, `src/common/middleware/rate-limit.ts`
 - Modify: `src/modules/auth/auth.middleware.ts`, `src/lib/auth.ts`, `src/app.ts` (limiter import), `src/modules/url/url.controller.ts` (temporary, `isOrgAdmin` → `canManageAll(req.roles)`)
 - Test: `tests/permissions.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - `ac`, `roles` (owner/admin/member)
   - `type Resource = "link" | "tag" | "analytics"`
@@ -307,6 +319,7 @@ git commit -m "feat: base62 public ids, keyset cursor, shared code rules"
 - [ ] **Step 1: Write the failing test**
 
 `tests/permissions.test.ts`:
+
 ```ts
 import { describe, it, expect, vi } from "vitest";
 import type { Response } from "express";
@@ -367,6 +380,7 @@ Expected: FAIL. `../src/modules/auth/permissions` can't be resolved.
 - [ ] **Step 3: Implement**
 
 `src/modules/auth/permissions.ts`:
+
 ```ts
 import { createAccessControl } from "better-auth/plugins/access";
 import {
@@ -431,6 +445,7 @@ export const canManageAll = (memberRoles: string[]): boolean =>
 If `typecheck` rejects `{ ...ownerAc.statements, ...appAccess }` because of readonly tuples, spread each action array instead (`link: [...appAccess.link]`). Behaviour stays the same.
 
 `src/modules/auth/auth.middleware.ts`: replace the `isOrgAdmin` field and the end of `requireOrganization`, and add `requirePermission`. Full file:
+
 ```ts
 import type { Request, Response, NextFunction } from "express";
 import { fromNodeHeaders } from "better-auth/node";
@@ -506,6 +521,7 @@ In `src/modules/url/url.controller.ts` (temporary until Task 4), replace `isOrgA
 In `src/lib/auth.ts`, add `import { ac, roles } from "../modules/auth/permissions";`, and in `organization({ … })` add `ac,` and `roles,` as the first two keys.
 
 `src/common/middleware/rate-limit.ts`: move `rateLimitHandler`, `LazyRedisStore` and `limiter` out of `app.ts` verbatim, exporting only `limiter`:
+
 ```ts
 import type express from "express";
 import rateLimit, { type Options } from "express-rate-limit";
@@ -549,7 +565,9 @@ export const limiter = (prefix: string, windowMs: number, max: number) =>
     }),
   });
 ```
+
 In `src/app.ts`:
+
 - Delete those three definitions and the now-unused imports (`rateLimit`, `Options`, `RedisStore`, `redis`).
 - Add `import { limiter } from "./common/middleware/rate-limit";`.
 
@@ -570,27 +588,34 @@ git commit -m "feat: org role permissions and requirePermission guard"
 ### Task 3: Schema — `public_id`, millisecond `created_at`, keyset indexes
 
 **Files:**
+
 - Modify: `src/db/schema.ts`
 - Create: `drizzle/0006_link_public_id.sql` (+ `drizzle/meta/0006_snapshot.json` and the `_journal.json` entry, generated)
 
 **Interfaces:**
+
 - Produces: `urls.publicId` (text, unique, not null); `Url` gains `publicId: string`.
 
 - [ ] **Step 1: Edit the `urls` table in `src/db/schema.ts`**
 
 Inside `pgTable("urls", { … })`, add after `id`:
+
 ```ts
     // Immutable public identifier (`link_…`) used by the API; the bigserial id
     // stays internal.
     publicId: text("public_id").notNull().unique(),
 ```
+
 Change `createdAt` to millisecond precision. JS `Date`s carry milliseconds, so keyset cursors must round-trip exactly:
+
 ```ts
     createdAt: timestamp("created_at", { withTimezone: true, precision: 3 })
       .notNull()
       .defaultNow(),
 ```
+
 Replace the index list:
+
 ```ts
   (t) => [
     // Keyset pagination: (sort key, public_id) within an organization.
@@ -599,7 +624,9 @@ Replace the index list:
     index("urls_user_id_created_at_idx").on(t.userId, t.createdAt),
   ],
 ```
+
 Update the table's doc comment. Replace the Sqids paragraph with:
+
 ```ts
 /**
  * Shortened URLs. `publicId` is the stable API identity; `code` is the
@@ -615,6 +642,7 @@ Expected: creates `drizzle/0006_link_public_id.sql` plus the snapshot and journa
 - [ ] **Step 3: Replace the generated SQL with a backfilling version**
 
 The generated `ADD COLUMN … NOT NULL` fails on existing rows. Overwrite `drizzle/0006_link_public_id.sql` with:
+
 ```sql
 ALTER TABLE "urls" ADD COLUMN "public_id" text;--> statement-breakpoint
 -- Backfill existing links. The subquery references the outer row so random()
@@ -637,14 +665,17 @@ Run: `bun run db:migrate`
 Expected: `Migrations applied.`
 
 Then check:
+
 ```bash
 docker compose exec postgres psql -U postgres -d url_shortener -c "SELECT count(*) AS total, count(DISTINCT public_id) AS distinct_ids, bool_and(public_id ~ '^link_[0-9A-Za-z]{24}$') AS well_formed FROM urls;"
 ```
+
 Expected: `total = distinct_ids` and `well_formed = t` (or `null` if the table is empty).
 
 - [ ] **Step 5: Typecheck and commit**
 
 Run: `bun run typecheck`. Expected errors appear only in `src/modules/url/*` and `tests/url.service.test.ts` (`publicId` missing); Task 4 replaces both. Then:
+
 ```bash
 git add src/db/schema.ts drizzle
 git commit -m "feat(db): link public ids, ms created_at, keyset indexes"
@@ -655,6 +686,7 @@ git commit -m "feat(db): link public ids, ms created_at, keyset indexes"
 ### Task 4: Split `url/` into `analytics/`, `links/` and `redirect/`; serve `/api/v1/links`
 
 **Files:**
+
 - Move: `src/modules/url/{attribution,click-analytics,click-recorder}.ts` → `src/modules/analytics/`
 - Move: `src/modules/url/link-cache.ts` → `src/modules/links/link-cache.ts`
 - Create:
@@ -669,6 +701,7 @@ git commit -m "feat(db): link public ids, ms created_at, keyset indexes"
   - Modify: `tests/app.test.ts`, `tests/attribution.test.ts`, `tests/click-analytics.test.ts`, `tests/click-recorder.test.ts`
 
 **Interfaces:**
+
 - Consumes from Tasks 1–3: `newPublicId`, `encodeCursor`, `decodeCursor`, `Cursor`, `generateCode`, `isReservedCode`, `isPossibleCode`, `CODE_PATTERN`, `canManageAll`, `requirePermission`, `limiter`, `Url.publicId`.
 - Produces:
   - `AnalyticsRepository` (`recordClicks`, `deleteClicksBefore`, `sourceBreakdown`, `recentClicks`), `analyticsRepository`, `ClickRow`
@@ -706,6 +739,7 @@ sed -i '' 's#src/modules/url/click-recorder#src/modules/analytics/click-recorder
 - [ ] **Step 2: Create `src/modules/analytics/analytics.repository.ts`**
 
 This moves the click methods out of `UrlRepository` unchanged:
+
 ```ts
 import { count, desc, eq, lt, sql } from "drizzle-orm";
 import { db } from "../../db/client";
@@ -775,15 +809,23 @@ export const analyticsRepository = new AnalyticsRepository();
 ```
 
 In `src/modules/analytics/click-recorder.ts`, change the repository import and add the singleton at the end of the file:
+
 ```ts
-import { analyticsRepository, type AnalyticsRepository, type ClickRow } from "./analytics.repository";
+import {
+  analyticsRepository,
+  type AnalyticsRepository,
+  type ClickRow,
+} from "./analytics.repository";
 ```
+
 Change the constructor parameter type to `Pick<AnalyticsRepository, "recordClicks">`, and append:
+
 ```ts
 export const clickRecorder = new ClickRecorder(analyticsRepository);
 ```
 
 In `src/modules/links/link-cache.ts`, append:
+
 ```ts
 /** Process-wide redirect cache shared by link management and redirects. */
 export const linkCache = new LinkCache();
@@ -792,6 +834,7 @@ export const linkCache = new LinkCache();
 - [ ] **Step 3: Write the failing links and redirect tests**
 
 `tests/links.schema.test.ts` (replaces `url.schema.test.ts`):
+
 ```ts
 import { describe, it, expect } from "vitest";
 import { createLinkSchema, listLinksQuerySchema } from "../src/modules/links/links.schema";
@@ -840,6 +883,7 @@ describe("listLinksQuerySchema", () => {
 ```
 
 `tests/links.service.test.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { LinksService, type Actor } from "../src/modules/links/links.service";
@@ -923,9 +967,9 @@ describe("create", () => {
   });
 
   it("rejects a reserved code", async () => {
-    await expect(service.create(owner, { url: "https://x.com", code: "api" })).rejects.toBeInstanceOf(
-      ConflictError,
-    );
+    await expect(
+      service.create(owner, { url: "https://x.com", code: "api" }),
+    ).rejects.toBeInstanceOf(ConflictError);
   });
 
   it("maps a taken custom code to 409 without retrying", async () => {
@@ -948,7 +992,9 @@ describe("list", () => {
     ];
     repo.list.mockResolvedValue(rows);
     const page = await service.list("org-1", input);
-    expect(repo.list).toHaveBeenCalledWith(expect.objectContaining({ limit: 3, organizationId: "org-1" }));
+    expect(repo.list).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 3, organizationId: "org-1" }),
+    );
     expect(page.data.map((l) => l.id)).toEqual(["link_a", "link_b"]);
     expect(decodeCursor(page.nextCursor!)).toEqual({ k: "2026-10-08T10:00:00.123Z", id: "link_b" });
   });
@@ -1047,6 +1093,7 @@ describe("remove", () => {
 ```
 
 `tests/redirect.service.test.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { RedirectService } from "../src/modules/redirect/redirect.service";
@@ -1113,6 +1160,7 @@ describe("resolve", () => {
 ```
 
 Replace `tests/app.test.ts` with:
+
 ```ts
 import { describe, it, expect } from "vitest";
 import request from "supertest";
@@ -1165,6 +1213,7 @@ describe("app routing & guards", () => {
 ```
 
 Delete the old tests:
+
 ```bash
 git rm tests/url.service.test.ts tests/url.schema.test.ts
 ```
@@ -1177,6 +1226,7 @@ Expected: FAIL. `links.schema`, `links.service`, `links.repository` and `redirec
 - [ ] **Step 5: Implement the links module**
 
 `src/modules/links/links.schema.ts`:
+
 ```ts
 import { z } from "zod";
 import { env } from "../../config/env";
@@ -1228,6 +1278,7 @@ export type ListLinksQuery = z.infer<typeof listLinksQuerySchema>;
 The `.strict()` rejection message is produced by the existing `validate.ts` `firstIssue()`. For unrecognized keys Zod's message is `Unrecognized key(s) in object: 'customAlias'` with an empty path, so the 400 names the key.
 
 `src/modules/links/links.repository.ts`:
+
 ```ts
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Cursor } from "../../common/cursor";
@@ -1324,14 +1375,10 @@ export const linksRepository = new LinksRepository();
 ```
 
 `src/modules/links/links.service.ts`:
+
 ```ts
 import { decodeCursor, encodeCursor, type Cursor } from "../../common/cursor";
-import {
-  BadRequestError,
-  ConflictError,
-  ForbiddenError,
-  NotFoundError,
-} from "../../common/errors";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../../common/errors";
 import { newPublicId } from "../../common/ids";
 import { env } from "../../config/env";
 import type { Url } from "../../db/schema";
@@ -1512,6 +1559,7 @@ export const linksService = new LinksService(linksRepository);
 ```
 
 `src/modules/links/links.controller.ts`:
+
 ```ts
 import type { Response } from "express";
 import { asyncHandler } from "../../common/asyncHandler";
@@ -1553,6 +1601,7 @@ export const linksController = {
 ```
 
 `src/modules/links/links.routes.ts`:
+
 ```ts
 import { Router } from "express";
 import { validateBody, validateQuery } from "../../common/middleware/validate";
@@ -1582,6 +1631,7 @@ linkRoutes.delete("/:id", requirePermission("link", "delete"), linksController.r
 - [ ] **Step 6: Implement the redirect module and v1 router, then wire the app**
 
 `src/modules/redirect/redirect.service.ts`:
+
 ```ts
 import { GoneError, NotFoundError } from "../../common/errors";
 import type { RedirectMeta } from "../analytics/click-analytics";
@@ -1621,6 +1671,7 @@ export const redirectService = new RedirectService(linksRepository, clickRecorde
 ```
 
 `src/modules/redirect/redirect.controller.ts`:
+
 ```ts
 import type { Request, Response } from "express";
 import { asyncHandler } from "../../common/asyncHandler";
@@ -1650,6 +1701,7 @@ export const redirectController = {
 ```
 
 `src/modules/redirect/redirect.routes.ts`:
+
 ```ts
 import { Router } from "express";
 import { limiter } from "../../common/middleware/rate-limit";
@@ -1671,6 +1723,7 @@ redirectRoutes.get(
 ```
 
 `src/routes/v1.ts`:
+
 ```ts
 import { Router } from "express";
 import { requireAuth, requireOrganization } from "../modules/auth/auth.middleware";
@@ -1687,12 +1740,14 @@ v1Routes.use("/links", linkRoutes);
 ```
 
 In `src/app.ts`:
+
 - Replace the `urlRoutes` and `urlController` imports with:
   ```ts
   import { v1Routes } from "./routes/v1";
   import { redirectRoutes } from "./modules/redirect/redirect.routes";
   ```
 - Replace the `/api/urls` mount and the redirect `app.get(...)` block with:
+
   ```ts
   // Management API (strict limit), grouped by resource under /api/v1.
   app.use("/api/v1", limiter("api", env.RATE_LIMIT_WINDOW_MS, env.RATE_LIMIT_MAX), v1Routes);
@@ -1702,13 +1757,16 @@ In `src/app.ts`:
   ```
 
 In `src/index.ts`, replace the two `modules/url` imports with:
+
 ```ts
 import { analyticsRepository } from "./modules/analytics/analytics.repository";
 import { clickRecorder } from "./modules/analytics/click-recorder";
 ```
+
 and change `urlRepository.deleteClicksBefore` to `analyticsRepository.deleteClicksBefore`.
 
 Delete the old module:
+
 ```bash
 git rm -r src/modules/url
 ```
@@ -1733,9 +1791,11 @@ BREAKING CHANGE: /api/urls is removed. Links are addressed by public id
 ### Task 5: DB integration tests for v1
 
 **Files:**
+
 - Modify: `tests/integration.test.ts` (full rewrite)
 
 **Interfaces:**
+
 - Consumes:
   - `clickRecorder` from `src/modules/analytics/click-recorder`
   - `analyticsRepository.sourceBreakdown(urlId)`
@@ -1755,14 +1815,23 @@ import { analyticsRepository } from "../src/modules/analytics/analytics.reposito
 
 /** Signs up + signs in a fresh user; returns its bearer header and user id. */
 async function newUser(app: ReturnType<typeof createApp>, prefix: string) {
-  const creds = { email: `${prefix}${Date.now()}${Math.random()}@example.com`, password: "password123" };
-  const signUp = await request(app).post("/api/auth/sign-up/email").send({ name: prefix, ...creds });
+  const creds = {
+    email: `${prefix}${Date.now()}${Math.random()}@example.com`,
+    password: "password123",
+  };
+  const signUp = await request(app)
+    .post("/api/auth/sign-up/email")
+    .send({ name: prefix, ...creds });
   expect(signUp.status).toBe(200);
   // Sign in again: the sign-up session predates the personal org.
   const signIn = await request(app).post("/api/auth/sign-in/email").send(creds);
   const token = signIn.headers["set-auth-token"] ?? signIn.body.token;
   expect(token).toBeTruthy();
-  return { auth: { Authorization: `Bearer ${token}` }, userId: signUp.body.user.id as string, creds };
+  return {
+    auth: { Authorization: `Bearer ${token}` },
+    userId: signUp.body.user.id as string,
+    creds,
+  };
 }
 
 // Full stack against a migrated Postgres: RUN_DB_TESTS=1 DATABASE_URL=... bun run test
@@ -1801,7 +1870,10 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
   });
 
   it("attributes one link's clicks per platform and ignores preview bots", async () => {
-    const created = await request(app).post("/api/v1/links").set(auth).send({ url: "https://c.com" });
+    const created = await request(app)
+      .post("/api/v1/links")
+      .set(auth)
+      .send({ url: "https://c.com" });
     const { id, code, shareUrls } = created.body as {
       id: string;
       code: string;
@@ -1834,7 +1906,10 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
   });
 
   it("refuses a code equal to an existing link's code (no hijack)", async () => {
-    const victim = await request(app).post("/api/v1/links").set(auth).send({ url: "https://a.com" });
+    const victim = await request(app)
+      .post("/api/v1/links")
+      .set(auth)
+      .send({ url: "https://a.com" });
     const squat = await request(app)
       .post("/api/v1/links")
       .set(auth)
@@ -1856,12 +1931,28 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
     const { auth: solo } = await newUser(app, "pager");
     const ids: string[] = [];
     for (let i = 0; i < 5; i++) {
-      ids.push((await request(app).post("/api/v1/links").set(solo).send({ url: `https://p${i}.com` })).body.id);
+      ids.push(
+        (
+          await request(app)
+            .post("/api/v1/links")
+            .set(solo)
+            .send({ url: `https://p${i}.com` })
+        ).body.id,
+      );
     }
     // Force a tie on the sort key: the tiebreaker must still order and page them.
-    await db.update(urls).set({ createdAt: new Date("2026-01-01T00:00:00.000Z") }).where(eq(urls.publicId, ids[1]));
-    await db.update(urls).set({ createdAt: new Date("2026-01-01T00:00:00.000Z") }).where(eq(urls.publicId, ids[2]));
-    await db.update(urls).set({ createdAt: new Date("2026-01-01T00:00:00.000Z") }).where(eq(urls.publicId, ids[3]));
+    await db
+      .update(urls)
+      .set({ createdAt: new Date("2026-01-01T00:00:00.000Z") })
+      .where(eq(urls.publicId, ids[1]));
+    await db
+      .update(urls)
+      .set({ createdAt: new Date("2026-01-01T00:00:00.000Z") })
+      .where(eq(urls.publicId, ids[2]));
+    await db
+      .update(urls)
+      .set({ createdAt: new Date("2026-01-01T00:00:00.000Z") })
+      .where(eq(urls.publicId, ids[3]));
 
     for (const order of ["desc", "asc"]) {
       const seen: string[] = [];
@@ -1887,16 +1978,24 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
 
   it("404s another organization's link and malformed ids", async () => {
     const { auth: other } = await newUser(app, "other");
-    const mine = await request(app).post("/api/v1/links").set(auth).send({ url: "https://mine.com" });
+    const mine = await request(app)
+      .post("/api/v1/links")
+      .set(auth)
+      .send({ url: "https://mine.com" });
     expect((await request(app).get(`/api/v1/links/${mine.body.id}`).set(other)).status).toBe(404);
-    expect((await request(app).delete(`/api/v1/links/${mine.body.id}`).set(other)).status).toBe(404);
+    expect((await request(app).delete(`/api/v1/links/${mine.body.id}`).set(other)).status).toBe(
+      404,
+    );
     expect((await request(app).get("/api/v1/links/abc").set(auth)).status).toBe(404);
   });
 
   it("enforces membership on every request and member/admin delete rights", async () => {
     const session = await request(app).get("/api/auth/get-session").set(auth);
     const orgId = session.body.session.activeOrganizationId as string;
-    const ownerLink = await request(app).post("/api/v1/links").set(auth).send({ url: "https://o.com" });
+    const ownerLink = await request(app)
+      .post("/api/v1/links")
+      .set(auth)
+      .send({ url: "https://o.com" });
 
     // Second user joins the owner's org as a plain member and switches to it.
     const m = await newUser(app, "member");
@@ -1914,9 +2013,13 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
       .expect(200);
 
     expect((await request(app).get("/api/v1/links").set(m.auth)).status).toBe(200);
-    expect((await request(app).delete(`/api/v1/links/${ownerLink.body.id}`).set(m.auth)).status).toBe(403);
+    expect(
+      (await request(app).delete(`/api/v1/links/${ownerLink.body.id}`).set(m.auth)).status,
+    ).toBe(403);
     const own = await request(app).post("/api/v1/links").set(m.auth).send({ url: "https://m.com" });
-    expect((await request(app).delete(`/api/v1/links/${own.body.id}`).set(m.auth)).status).toBe(204);
+    expect((await request(app).delete(`/api/v1/links/${own.body.id}`).set(m.auth)).status).toBe(
+      204,
+    );
 
     // Admin removes the member: their still-valid session loses access at once.
     await request(app)
@@ -1925,7 +2028,9 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
       .send({ memberIdOrEmail: m.creds.email, organizationId: orgId })
       .expect(200);
     expect((await request(app).get("/api/v1/links").set(m.auth)).status).toBe(403);
-    expect((await request(app).post("/api/v1/links").set(m.auth).send({ url: "https://z.com" })).status).toBe(403);
+    expect(
+      (await request(app).post("/api/v1/links").set(m.auth).send({ url: "https://z.com" })).status,
+    ).toBe(403);
   });
 
   it("stops redirecting after delete", async () => {
@@ -1944,9 +2049,11 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
 - [ ] **Step 2: Run against Postgres**
 
 Run:
+
 ```bash
 docker compose up -d && bun run db:migrate && RUN_DB_TESTS=1 bun run test tests/integration.test.ts
 ```
+
 (`.env` must point `DATABASE_URL` at `localhost:5433`.)
 Expected: all integration tests PASS. If the pagination test fails, the keyset comparison or tiebreaker is wrong. Fix `LinksRepository.list`, not the test.
 
@@ -1963,6 +2070,7 @@ git commit -m "test: v1 links integration coverage (keyset ties, cross-org 404, 
 ### Task 6: Docs and API collections
 
 **Files:**
+
 - Delete: `docs/api/url.md`
 - Create: `docs/api/links.md`
 - Modify: `README.md` (API section, architecture tree), `docs/frontend-spec.md` (route references), `url-shortener.postman_collection.json`
@@ -1996,12 +2104,12 @@ session's active organization. Errors use `{ "error": { "code", "message" } }`.
 
 ## Endpoints
 
-| Method | Path | Permission | Success |
-| ------ | ---- | ---------- | ------- |
-| POST | `/api/v1/links` | link:create | `201` + `Location` |
-| GET | `/api/v1/links` | link:read | `200` page |
-| GET | `/api/v1/links/:id` | link:read | `200` |
-| DELETE | `/api/v1/links/:id` | link:delete | `204` |
+| Method | Path                | Permission  | Success            |
+| ------ | ------------------- | ----------- | ------------------ |
+| POST   | `/api/v1/links`     | link:create | `201` + `Location` |
+| GET    | `/api/v1/links`     | link:read   | `200` page         |
+| GET    | `/api/v1/links/:id` | link:read   | `200`              |
+| DELETE | `/api/v1/links/:id` | link:delete | `204`              |
 
 ### POST /api/v1/links
 
@@ -2018,15 +2126,20 @@ session's active organization. Errors use `{ "error": { "code", "message" } }`.
 
 ### GET /api/v1/links
 
-| Query | Default | Notes |
-| ----- | ------- | ----- |
-| `limit` | 20 | 1–100 |
-| `sort` | `createdAt` | `createdAt` or `clicks` |
-| `order` | `desc` | `asc` or `desc` |
-| `cursor` | — | `nextCursor` from the previous page |
+| Query    | Default     | Notes                               |
+| -------- | ----------- | ----------------------------------- |
+| `limit`  | 20          | 1–100                               |
+| `sort`   | `createdAt` | `createdAt` or `clicks`             |
+| `order`  | `desc`      | `asc` or `desc`                     |
+| `cursor` | —           | `nextCursor` from the previous page |
 
 ```json
-{ "data": [ /* links */ ], "nextCursor": "eyJrIjoi…" }
+{
+  "data": [
+    /* links */
+  ],
+  "nextCursor": "eyJrIjoi…"
+}
 ```
 
 `nextCursor` is `null` on the last page. Cursors are opaque, and a malformed
@@ -2051,26 +2164,30 @@ git rm docs/api/url.md
 - [ ] **Step 2: Update `README.md`**
 
 - In the "🧱 Architecture" tree, replace the `url/` line with:
+
 ```
     analytics/             # attribution, click parsing, batched recorder, click repo
     links/                 # /api/v1/links: repository, service, schema, routes, codes, cache
     redirect/              # public GET /:code[/:channel]
   routes/v1.ts             # mounts /api/v1 resource groups behind auth + org guards
 ```
+
 - Replace the "### URLs" table and the curl example with:
+
 ```markdown
 ### Links (v1)
 
 See [docs/api/links.md](docs/api/links.md).
 
-| Method | Path                | Description                         |
-| ------ | ------------------- | ----------------------------------- |
-| POST   | `/api/v1/links`     | Create a link (`url`, `code?`, `expiresAt?`) |
+| Method | Path                | Description                                       |
+| ------ | ------------------- | ------------------------------------------------- |
+| POST   | `/api/v1/links`     | Create a link (`url`, `code?`, `expiresAt?`)      |
 | GET    | `/api/v1/links`     | List (cursor: `limit`, `cursor`, `sort`, `order`) |
-| GET    | `/api/v1/links/:id` | Read one link                       |
-| DELETE | `/api/v1/links/:id` | Soft-delete                         |
-| GET    | `/:code[/:channel]` | Redirect (302); 410 if expired      |
+| GET    | `/api/v1/links/:id` | Read one link                                     |
+| DELETE | `/api/v1/links/:id` | Soft-delete                                       |
+| GET    | `/:code[/:channel]` | Redirect (302); 410 if expired                    |
 ```
+
 - In the curl example, change `POST localhost:3000/api/urls` to `/api/v1/links`.
 - In the "Per-platform attribution" section, change the reference to `GET /api/urls/:code/stats`. Per-source stats return in phase D (`GET /api/v1/analytics?groupBy=sources`), so say exactly that.
 
@@ -2078,6 +2195,7 @@ See [docs/api/links.md](docs/api/links.md).
 
 Run: `grep -n "api/urls\|customAlias\|offset" docs/frontend-spec.md`
 For every hit:
+
 - `/api/urls` becomes `/api/v1/links`.
 - `:code` path params become `:id`.
 - `customAlias` becomes `code`.
@@ -2094,11 +2212,13 @@ git mv "bruno/Links/Create Short URL (custom alias and expiry).bru" "bruno/Links
 git mv "bruno/Links/List Org URLs.bru" "bruno/Links/List Links.bru"
 git mv "bruno/Links/Delete Short URL.bru" "bruno/Links/Delete Link.bru"
 ```
+
 Edit `bruno/Links/folder.bru` and set the folder name to `Links`.
 
 In all three `Redirect*.bru` files, nothing changes except the folder; they still use `{{shortCode}}`.
 
 `bruno/Links/Create Link.bru`:
+
 ```
 meta {
   name: Create Link
@@ -2141,6 +2261,7 @@ docs {
 ```
 
 `bruno/Links/Create Link (custom code and expiry).bru`: same as above, but with `seq: 2`, the name `Create Link (custom code and expiry)`, and this body. Keep the same tests except the `bru.setVar` lines:
+
 ```json
 {
   "url": "https://aiengg.dev/blog",
@@ -2150,6 +2271,7 @@ docs {
 ```
 
 `bruno/Links/List Links.bru`:
+
 ```
 meta {
   name: List Links
@@ -2188,6 +2310,7 @@ docs {
 ```
 
 `bruno/Links/Get Link.bru` (new):
+
 ```
 meta {
   name: Get Link
@@ -2216,6 +2339,7 @@ tests {
 - [ ] **Step 5: Update the Postman collection**
 
 Run this one-off script:
+
 ```bash
 python3 - <<'PY'
 import json
@@ -2270,10 +2394,12 @@ PY
 - [ ] **Step 6: Verify the collections end to end**
 
 Run (server up, fresh email; see the README note on `AUTH_RATE_LIMIT_MAX`):
+
 ```bash
 bun run dev &
 npx @usebruno/cli run --env Local --env-var email=me+$(date +%s)@example.com
 ```
+
 Expected: every request in `Links/` passes. Stop the dev server afterwards.
 
 - [ ] **Step 7: Format and commit**

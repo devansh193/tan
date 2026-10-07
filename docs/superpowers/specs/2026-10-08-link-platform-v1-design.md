@@ -10,19 +10,19 @@ API and storage design that holds up under very high redirect and click volume.
 
 ### In scope
 
-| # | Feature |
-| - | ------- |
-| 1 | Edit a link (destination, code, expiry, and every field below) |
-| 2 | Aggregated analytics: time series, country, city, device, browser, OS, referrer, source, unique visitors |
-| 3 | Date range and multi-value filters on analytics |
-| 4 | Link title and description, search, filter list by creator |
-| 5 | Tags (many per link) and tag filter |
-| 6 | QR code generation (SVG/PNG, colors) |
-| 7 | QR scans vs. normal clicks |
-| 8 | Full UTM support (`utm_term`, `utm_content`, server-side UTM builder) |
-| 9 | `X-Robots-Tag: noindex` on redirects, plus `robots.txt` |
-| 10 | 301/302 choice per link |
-| 11 | Viewer (read-only) organization role |
+| #   | Feature                                                                                                  |
+| --- | -------------------------------------------------------------------------------------------------------- |
+| 1   | Edit a link (destination, code, expiry, and every field below)                                           |
+| 2   | Aggregated analytics: time series, country, city, device, browser, OS, referrer, source, unique visitors |
+| 3   | Date range and multi-value filters on analytics                                                          |
+| 4   | Link title and description, search, filter list by creator                                               |
+| 5   | Tags (many per link) and tag filter                                                                      |
+| 6   | QR code generation (SVG/PNG, colors)                                                                     |
+| 7   | QR scans vs. normal clicks                                                                               |
+| 8   | Full UTM support (`utm_term`, `utm_content`, server-side UTM builder)                                    |
+| 9   | `X-Robots-Tag: noindex` on redirects, plus `robots.txt`                                                  |
+| 10  | 301/302 choice per link                                                                                  |
+| 11  | Viewer (read-only) organization role                                                                     |
 
 ### Out of scope
 
@@ -133,21 +133,22 @@ GET /:code[/:channel]           public redirect
 
 ### Create / update body
 
-| Field | Create | PATCH | Rules |
-| ----- | ------ | ----- | ----- |
-| `url` | required | optional | existing rules: http(s), ≤2048, no credentials, not self, Safe Browsing |
-| `code` | optional | optional | 3–32 `[A-Za-z0-9_-]`, not reserved, unique (409) |
-| `title` | optional | nullable | ≤200 |
-| `description` | optional | nullable | ≤1000 |
-| `expiresAt` | optional | nullable | must be in the future |
-| `redirectType` | optional (302) | optional | `301` or `302` |
-| `utm` | optional | optional | object of `source, medium, campaign, term, content`, each ≤200, `null` removes that param |
-| `tagIds` | optional | optional | ≤10, all must belong to the org; PATCH replaces the set |
+| Field          | Create         | PATCH    | Rules                                                                                     |
+| -------------- | -------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `url`          | required       | optional | existing rules: http(s), ≤2048, no credentials, not self, Safe Browsing                   |
+| `code`         | optional       | optional | 3–32 `[A-Za-z0-9_-]`, not reserved, unique (409)                                          |
+| `title`        | optional       | nullable | ≤200                                                                                      |
+| `description`  | optional       | nullable | ≤1000                                                                                     |
+| `expiresAt`    | optional       | nullable | must be in the future                                                                     |
+| `redirectType` | optional (302) | optional | `301` or `302`                                                                            |
+| `utm`          | optional       | optional | object of `source, medium, campaign, term, content`, each ≤200, `null` removes that param |
+| `tagIds`       | optional       | optional | ≤10, all must belong to the org; PATCH replaces the set                                   |
 
 `customAlias` is renamed to `code`. On PATCH, when `utm` and `url` are both
 given, the UTM params are merged onto the new `url`.
 
 **UTM model:**
+
 - The destination URL is the single source of truth.
 - `utm` is applied by setting or deleting `utm_*` params on the URL with
   `URLSearchParams`. Other params and their order are preserved.
@@ -158,12 +159,12 @@ given, the UTM params are merged onto the new `url`.
 Better Auth's `organization` plugin gets a custom access control. In
 `src/modules/auth/permissions.ts`:
 
-| Resource.action | owner | admin | member | viewer |
-| --------------- | ----- | ----- | ------ | ------ |
-| link.read, tag.read, analytics.read | ✓ | ✓ | ✓ | ✓ |
-| link.create | ✓ | ✓ | ✓ | ✗ |
-| link.update, link.delete | any | any | own only | ✗ |
-| tag.create, tag.update, tag.delete | ✓ | ✓ | ✓ | ✗ |
+| Resource.action                     | owner | admin | member   | viewer |
+| ----------------------------------- | ----- | ----- | -------- | ------ |
+| link.read, tag.read, analytics.read | ✓     | ✓     | ✓        | ✓      |
+| link.create                         | ✓     | ✓     | ✓        | ✗      |
+| link.update, link.delete            | any   | any   | own only | ✗      |
+| tag.create, tag.update, tag.delete  | ✓     | ✓     | ✓        | ✗      |
 
 - **Guard:** `requirePermission(resource, action)` is Express middleware that
   checks the roles already loaded by `requireOrganization`. No extra DB call.
@@ -197,6 +198,7 @@ then `/:code/:channel?`.
 6. Every redirect, 404 and 410 response sets `X-Robots-Tag: noindex, nofollow`.
 
 **Invalidation:**
+
 - After a link update or delete commits, the service calls
   `linkCache.invalidate(codes)` for the old code, plus the new code if it
   changed. This step:
@@ -220,15 +222,16 @@ hand-written SQL in the migration.
 
 ### `urls` (extended)
 
-| Column | Type | Notes |
-| ------ | ---- | ----- |
-| `public_id` | text unique not null | backfilled for existing rows |
-| `title` | text null | |
-| `description` | text null | |
-| `redirect_type` | smallint not null default 302 | check in (301, 302) |
-| `updated_at` | timestamptz not null default now() | |
+| Column          | Type                               | Notes                        |
+| --------------- | ---------------------------------- | ---------------------------- |
+| `public_id`     | text unique not null               | backfilled for existing rows |
+| `title`         | text null                          |                              |
+| `description`   | text null                          |                              |
+| `redirect_type` | smallint not null default 302      | check in (301, 302)          |
+| `updated_at`    | timestamptz not null default now() |                              |
 
 **Indexes:**
+
 - `(organization_id, created_at, public_id)`, replacing the current org index
 - `(organization_id, click_count, public_id)`
 - `(organization_id, user_id, created_at)`
@@ -304,6 +307,7 @@ url_id bigint, day date, visitor_hash bytea(16), pk (url_id, day, visitor_hash)
 5. The existing `click_count` delta update.
 
 **Visitor hash:**
+
 - First 16 bytes of `HMAC-SHA256(BETTER_AUTH_SECRET, utcDay | fullIp | userAgent | urlId)`.
 - Computed in `buildClickData` before IP anonymisation.
 - It's per day and per link, so visitors can't be linked across days or
@@ -311,14 +315,14 @@ url_id bigint, day date, visitor_hash bytea(16), pk (url_id, day, visitor_hash)
 
 ### Query: `GET /api/v1/analytics`
 
-| Param | Values |
-| ----- | ------ |
-| `groupBy` | `timeseries` (default), `countries`, `cities`, `devices`, `browsers`, `os`, `referers`, `sources` |
-| `start`, `end` | ISO datetimes; default last 30 days; max span 2 years |
-| `interval` | `hour`, `day`, `month`; default is hour up to 2 days, day up to 90, month beyond. Hour is rejected for spans over 31 days |
-| `timezone` | IANA name, default `UTC`; validated with `Intl.DateTimeFormat` |
-| `linkId`, `tagId` | comma lists; tag uses an `EXISTS` on `link_tags` |
-| `country, city, device, browser, os, referer, source` | comma lists → `IN (…)` |
+| Param                                                 | Values                                                                                                                    |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `groupBy`                                             | `timeseries` (default), `countries`, `cities`, `devices`, `browsers`, `os`, `referers`, `sources`                         |
+| `start`, `end`                                        | ISO datetimes; default last 30 days; max span 2 years                                                                     |
+| `interval`                                            | `hour`, `day`, `month`; default is hour up to 2 days, day up to 90, month beyond. Hour is rejected for spans over 31 days |
+| `timezone`                                            | IANA name, default `UTC`; validated with `Intl.DateTimeFormat`                                                            |
+| `linkId`, `tagId`                                     | comma lists; tag uses an `EXISTS` on `link_tags`                                                                          |
+| `country, city, device, browser, os, referer, source` | comma lists → `IN (…)`                                                                                                    |
 
 - **Security:** dimensions come from a fixed whitelist that maps each param to
   a column. Every value is a bound parameter. `organization_id = $org` is
@@ -359,6 +363,7 @@ to the first hour of the day.
 Vitest and Supertest, following the existing style in `tests/`.
 
 **Unit:**
+
 - UTM merge and parse
 - Cursor encode and decode, including tamper → 400
 - Permission matrix
@@ -373,6 +378,7 @@ Vitest and Supertest, following the existing style in `tests/`.
 - Two-level cache with invalidation, using a fake Redis
 
 **Integration, DB-free with mocked services, as today:**
+
 - Every v1 route: status codes and envelopes
 - Viewer 403s on writes
 - Member vs admin editing others' links
@@ -381,6 +387,7 @@ Vitest and Supertest, following the existing style in `tests/`.
 - `/robots.txt`
 
 **Integration with `RUN_DB_TESTS=1` (CI Postgres + Redis):**
+
 - Create → PATCH code → old code 404s, new code redirects
 - Rollup upsert from a flushed batch
 - `visitor_days` dedupe
@@ -390,6 +397,7 @@ Vitest and Supertest, following the existing style in `tests/`.
 - Cursor pagination stability
 
 **Docs and collections:**
+
 - `docs/api/*.md`
 - `README.md`
 - `docs/frontend-spec.md` (route references)
@@ -415,31 +423,34 @@ Each limit is marked in code with a `ponytail:` comment.
 Each phase is one PR, with tests green and docs updated.
 
 A. v1 foundation:
-   - Module split (`links/`, `analytics/`, `redirect/`, `auth/permissions`)
-   - `/api/v1` mount
-   - `public_id`
-   - Cursor pagination
-   - Remove `/api/urls`
+
+- Module split (`links/`, `analytics/`, `redirect/`, `auth/permissions`)
+- `/api/v1` mount
+- `public_id`
+- Cursor pagination
+- Remove `/api/urls`
 
 B. Link core:
-   - PATCH
-   - title and description
-   - `redirect_type`
-   - noindex and `robots.txt`
-   - UTM builder
-   - Search and `userId` filter
-   - Two-level cache with pub/sub invalidation
+
+- PATCH
+- title and description
+- `redirect_type`
+- noindex and `robots.txt`
+- UTM builder
+- Search and `userId` filter
+- Two-level cache with pub/sub invalidation
 
 C. Tags.
 
 D. Analytics:
-   - Partitions
-   - Rollups
-   - `visitor_days`
-   - Query endpoint
-   - Backfill
+
+- Partitions
+- Rollups
+- `visitor_days`
+- Query endpoint
+- Backfill
 
 E. QR.
 
 F. Viewer role and the permission guard on every route. The guard is
-   introduced in A with the current roles; F adds `viewer`.
+introduced in A with the current roles; F adds `viewer`.
