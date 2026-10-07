@@ -6,7 +6,7 @@ import { CHANNELS } from "./attribution";
 import type { RedirectMeta } from "./click-analytics";
 import { ClickRecorder } from "./click-recorder";
 import { LinkCache } from "./link-cache";
-import { generateCode } from "./short-code";
+import { generateCode } from "../links/codes";
 import { UrlRepository, urlRepository, type CreateUrlData } from "./url.repository";
 
 /** Aliases that would collide with real routes and are therefore disallowed. */

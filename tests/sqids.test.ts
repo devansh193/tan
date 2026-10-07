@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { encodeId, decodeId } from "../src/modules/url/sqids";
+import { encodeId, decodeId } from "../src/modules/links/sqids";
 
 describe("sqids bijection", () => {
   it("round-trips a counter id through encode/decode", () => {

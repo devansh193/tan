@@ -1,6 +1,6 @@
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { encodeId } from "../modules/url/sqids";
-import { generateCode } from "../modules/url/short-code";
+import { encodeId } from "../modules/links/sqids";
+import { generateCode } from "../modules/links/codes";
 import { db, pool } from "./client";
 
 const PG_UNIQUE_VIOLATION = "23505";
