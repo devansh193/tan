@@ -1,0 +1,16 @@
+meta {
+  name: Auth OK
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/auth/ok
+  body: none
+  auth: none
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  test('ok true', () => expect(res.getBody().ok).to.equal(true));
+}

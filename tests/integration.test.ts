@@ -1,7 +1,8 @@
 import { describe, it, expect, afterAll } from "vitest";
 import request from "supertest";
 import { createApp } from "../src/app";
-import { pool } from "../src/db/client";
+import { db, pool } from "../src/db/client";
+import { member } from "../src/db/schema";
 import { clickRecorder } from "../src/modules/url/url.service";
 
 // Full stack against a migrated Postgres: RUN_DB_TESTS=1 DATABASE_URL=... bun run test
@@ -87,6 +88,54 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
 
     const hit = await request(app).get(`/${victim.body.code}`);
     expect(hit.headers.location).toBe("https://a.com");
+  });
+
+  it("enforces membership on every request and member/admin delete rights", async () => {
+    // Owner's org + a link the owner created.
+    const session = await request(app).get("/api/auth/get-session").set(auth());
+    const orgId = session.body.session.activeOrganizationId as string;
+    const ownerLink = await request(app)
+      .post("/api/urls")
+      .set(auth())
+      .send({ url: "https://o.com" });
+
+    // Second user joins the owner's org as a plain member and switches to it.
+    const creds = { email: `m${Date.now()}@example.com`, password: "password123" };
+    const signUp = await request(app)
+      .post("/api/auth/sign-up/email")
+      .send({ name: "M", ...creds });
+    await db.insert(member).values({
+      id: `mem-${Date.now()}`,
+      organizationId: orgId,
+      userId: signUp.body.user.id as string,
+      role: "member",
+      createdAt: new Date(),
+    });
+    const signIn = await request(app).post("/api/auth/sign-in/email").send(creds);
+    const memberAuth = { Authorization: `Bearer ${signIn.headers["set-auth-token"]}` };
+    await request(app)
+      .post("/api/auth/organization/set-active")
+      .set(memberAuth)
+      .send({ organizationId: orgId })
+      .expect(200);
+
+    // Shared reads; members can't delete others' links but can delete their own.
+    expect((await request(app).get("/api/urls").set(memberAuth)).status).toBe(200);
+    const denied = await request(app).delete(`/api/urls/${ownerLink.body.code}`).set(memberAuth);
+    expect(denied.status).toBe(403);
+    const own = await request(app).post("/api/urls").set(memberAuth).send({ url: "https://m.com" });
+    expect((await request(app).delete(`/api/urls/${own.body.code}`).set(memberAuth)).status).toBe(
+      204,
+    );
+
+    // Admin removes the member: their still-valid session loses access at once.
+    await request(app)
+      .post("/api/auth/organization/remove-member")
+      .set(auth())
+      .send({ memberIdOrEmail: creds.email, organizationId: orgId })
+      .expect(200);
+    const after = await request(app).get("/api/urls").set(memberAuth);
+    expect(after.status).toBe(403);
   });
 
   it("stops redirecting after delete", async () => {

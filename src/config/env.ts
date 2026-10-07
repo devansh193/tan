@@ -32,7 +32,18 @@ const envSchema = z.object({
 
   // Email (Resend). Required in production for verification + password reset.
   RESEND_API_KEY: z.string().optional(),
-  EMAIL_FROM: z.string().email().optional(),
+  // "you@domain.com" or "Display Name <you@domain.com>".
+  EMAIL_FROM: z
+    .string()
+    .refine(
+      (v) =>
+        z
+          .string()
+          .email()
+          .safeParse(/<([^<>]+)>\s*$/.exec(v)?.[1] ?? v).success,
+      'must be an email or "Name <email>"',
+    )
+    .optional(),
 
   // Rate limiting (window + max requests per window).
   RATE_LIMIT_WINDOW_MS: z.coerce
@@ -59,7 +70,10 @@ const envSchema = z.object({
   SQIDS_ALPHABET: z.string().optional(),
 });
 
-const parsed = envSchema.safeParse(process.env);
+// `KEY=` (as in .env.example) means "unset", not an empty value to validate.
+const parsed = envSchema.safeParse(
+  Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== "")),
+);
 if (!parsed.success) {
   console.error("Invalid environment variables:", parsed.error.flatten().fieldErrors);
   process.exit(1);

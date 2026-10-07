@@ -1,0 +1,41 @@
+meta {
+  name: Create Organization
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/auth/organization/create
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "name": "Ikiri",
+    "slug": "{{orgSlug}}"
+  }
+}
+
+vars:pre-request {
+  orgSlug: ikiru
+}
+
+tests {
+  test('2xx or slug exists', () => expect(res.getStatus()).to.be.oneOf([200, 201, 400]));
+  try {
+    if (res.getStatus() === 200 || res.getStatus() === 201) {
+      const data = res.getBody();
+      test('org id returned', () => expect(data.id).to.be.a('string').and.not.empty);
+      if (data.id) bru.setVar('organizationId', data.id);
+    }
+  } catch (e) {}
+}
+
+docs {
+  Creates a new organization with the caller as owner. Optional: `logo`, `metadata` (object), `keepCurrentActiveOrganization` (boolean). The new org id is captured into `organizationId`.
+}

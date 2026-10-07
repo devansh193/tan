@@ -1,0 +1,29 @@
+meta {
+  name: Delete Organization
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/auth/organization/delete
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "organizationId": "{{organizationId}}"
+  }
+}
+
+tests {
+  test('2xx or expected error', () => expect(res.getStatus()).to.be.oneOf([200, 201, 400, 403, 404]));
+}
+
+docs {
+  Permanently deletes the organization (and cascades its short links). Requires owner.
+}

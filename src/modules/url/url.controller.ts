@@ -34,7 +34,11 @@ export const urlController = {
 
   // DELETE /api/urls/:code  (auth) — soft-delete an org-owned link.
   remove: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    await urlService.remove(req.params.code, req.organizationId!);
+    await urlService.remove(req.params.code, {
+      organizationId: req.organizationId!,
+      userId: req.userId!,
+      isOrgAdmin: req.isOrgAdmin ?? false,
+    });
     res.status(204).send();
   }),
 

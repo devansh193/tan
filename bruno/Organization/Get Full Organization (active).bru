@@ -1,0 +1,28 @@
+meta {
+  name: Get Full Organization (active)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/auth/organization/get-full-organization
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  try {
+    const data = res.getBody();
+    test('org id present', () => expect(data.id).to.be.a('string').and.not.empty);
+    test('members array present', () => expect(data.members).to.be.an('array'));
+  } catch (e) {}
+}
+
+docs {
+  Returns the active organization with members and invitations. Optionally pass `?organizationId=` or `?organizationSlug=` to target a specific org.
+}

@@ -1,0 +1,31 @@
+meta {
+  name: List Invitations
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/auth/organization/list-invitations?organizationId={{organizationId}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  organizationId: {{organizationId}}
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  try {
+    const data = res.getBody();
+    test('returns array', () => expect(data).to.be.an('array'));
+  } catch (e) {}
+}
+
+docs {
+  Lists invitations for the organization.
+}

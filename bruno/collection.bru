@@ -1,0 +1,23 @@
+headers {
+  Origin: {{baseUrl}}
+}
+
+vars:pre-request {
+  baseUrl: http://localhost:3000
+}
+
+script:pre-request {
+  const path = req.getUrl();
+  if (path.includes('/organization/check-slug') || path.includes('/organization/create')) {
+    bru.setVar('orgSlug', 'org-' + Date.now());
+  }
+}
+
+docs {
+  Origin header is required: Better Auth 403s (MISSING_OR_NULL_ORIGIN) any request
+  that carries a cookie (Bruno's cookie jar sends one after sign-in) without it.
+  
+  Flow: Sign Up -> Sign In (captures sessionToken) -> Get Session -> URLs.
+  Set email/password in the Local environment. Runtime vars (sessionToken, shortCode,
+  organizationId, invitationId, memberId, jwtToken) are captured by tests.
+}

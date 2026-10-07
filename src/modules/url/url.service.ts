@@ -1,4 +1,4 @@
-import { ConflictError, GoneError, NotFoundError } from "../../common/errors";
+import { ConflictError, ForbiddenError, GoneError, NotFoundError } from "../../common/errors";
 import { env } from "../../config/env";
 import type { Url } from "../../db/schema";
 import { assertSafeUrl } from "../../lib/safe-browsing";
@@ -121,10 +121,22 @@ export class UrlService {
     return { items: rows.map((row) => this.toView(row)), total, limit, offset };
   }
 
-  /** Soft-deletes a URL owned by the caller's organization. */
-  async remove(code: string, organizationId: string): Promise<void> {
+  /**
+   * Soft-deletes a URL owned by the caller's organization. Plain members may
+   * only delete links they created; owners/admins may delete any.
+   */
+  async remove(
+    code: string,
+    actor: { organizationId: string; userId: string; isOrgAdmin: boolean },
+  ): Promise<void> {
+    const { organizationId } = actor;
     const url = await this.repo.findByCode(code);
-    if (!url) throw new NotFoundError("Short link not found");
+    if (!url || url.organizationId !== organizationId) {
+      throw new NotFoundError("Short link not found");
+    }
+    if (!actor.isOrgAdmin && url.userId !== actor.userId) {
+      throw new ForbiddenError("Only organization admins can delete other members' links");
+    }
 
     const ok = await this.repo.softDelete(url.id, organizationId);
     // Either the link doesn't exist or it isn't the org's — same 404.

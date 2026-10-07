@@ -1,0 +1,34 @@
+meta {
+  name: Sign In (email)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/auth/sign-in/email
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "{{email}}",
+    "password": "{{password}}"
+  }
+}
+
+vars:pre-request {
+  email: devanshverma1609@gmail.com
+  password: Devansh@12345
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  test('set-auth-token header present', () => expect(res.getHeader('set-auth-token')).to.be.a('string').and.not.empty);
+  const token = res.getHeader('set-auth-token');
+  if (token) bru.setVar('sessionToken', token);
+  try {
+    const data = res.getBody();
+    test('user returned', () => expect(data.user).to.be.an('object'));
+  } catch (e) {}
+}

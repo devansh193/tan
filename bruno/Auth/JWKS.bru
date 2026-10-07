@@ -1,0 +1,23 @@
+meta {
+  name: JWKS
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/auth/jwks
+  body: none
+  auth: none
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  try {
+    const data = res.getBody();
+    test('keys array present', () => expect(data.keys).to.be.an('array').and.not.empty);
+  } catch (e) {}
+}
+
+docs {
+  Public keys for verifying JWTs from GET /api/auth/token.
+}

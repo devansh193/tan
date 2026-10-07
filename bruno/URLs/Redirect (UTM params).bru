@@ -1,0 +1,31 @@
+meta {
+  name: Redirect (UTM params)
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/{{shortCode}}?utm_source=newsletter&utm_medium=email&utm_campaign=launch
+  body: none
+  auth: none
+}
+
+params:query {
+  utm_source: newsletter
+  utm_medium: email
+  utm_campaign: launch
+}
+
+tests {
+  test('302 redirect', () => expect(res.getStatus()).to.equal(302));
+  test('Location header present', () => expect(res.getHeader('location')).to.be.a('string').and.not.empty);
+}
+
+settings {
+  followRedirects: false
+}
+
+docs {
+  Public route. Redirect following is disabled (Settings tab) so you see the 302 + Location.
+  utm_source/utm_medium/utm_campaign are recorded with the click.
+}

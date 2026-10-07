@@ -1,0 +1,32 @@
+meta {
+  name: List Members
+  type: http
+  seq: 13
+}
+
+get {
+  url: {{baseUrl}}/api/auth/organization/list-members?organizationId={{organizationId}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  organizationId: {{organizationId}}
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  try {
+    const data = res.getBody();
+    const members = (data && (data.members || data.data)) || [];
+    if (members.length && members[0].id) bru.setVar('memberId', members[0].id);
+  } catch (e) {}
+}
+
+docs {
+  Lists members of the organization. Captures the first member id into `memberId`.
+}

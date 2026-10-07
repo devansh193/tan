@@ -1,0 +1,23 @@
+meta {
+  name: Delete Short URL
+  type: http
+  seq: 99
+}
+
+delete {
+  url: {{baseUrl}}/api/urls/{{shortCode}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+tests {
+  test('204 No Content', () => expect(res.getStatus()).to.equal(204));
+}
+
+docs {
+  Soft-deletes a link owned by the active organization.
+}

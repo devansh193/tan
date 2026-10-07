@@ -1,0 +1,30 @@
+meta {
+  name: Remove Member
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/auth/organization/remove-member
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "memberIdOrEmail": "teammate@example.com",
+    "organizationId": "{{organizationId}}"
+  }
+}
+
+tests {
+  test('2xx or expected error', () => expect(res.getStatus()).to.be.oneOf([200, 201, 400, 403, 404]));
+}
+
+docs {
+  Removes a member by member id or email. Requires admin/owner.
+}

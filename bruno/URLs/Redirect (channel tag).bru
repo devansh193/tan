@@ -1,0 +1,26 @@
+meta {
+  name: Redirect (channel tag)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/{{shortCode}}/{{channel}}
+  body: none
+  auth: none
+}
+
+tests {
+  test('302 redirect', () => expect(res.getStatus()).to.equal(302));
+  test('Location header present', () => expect(res.getHeader('location')).to.be.a('string').and.not.empty);
+}
+
+settings {
+  followRedirects: false
+}
+
+docs {
+  Public route. Redirect following is disabled (Settings tab) so you see the 302 + Location.
+  Channel tag attributes the click to a platform (shows in Stats `sources`).
+  Tags: ig fb li x th tt yt rd pin sc wa tg em sms qr. Unknown tags still redirect.
+}

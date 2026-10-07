@@ -1,0 +1,30 @@
+meta {
+  name: Accept Invitation
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/auth/organization/accept-invitation
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "invitationId": "{{invitationId}}"
+  }
+}
+
+tests {
+  // 403 unless signed in as the invited user.
+  test('2xx or not invitee', () => expect(res.getStatus()).to.be.oneOf([200, 201, 403]));
+}
+
+docs {
+  Accepts a pending invitation. Must be called while signed in as the invited user (the email must match).
+}

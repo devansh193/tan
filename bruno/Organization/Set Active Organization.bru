@@ -1,0 +1,34 @@
+meta {
+  name: Set Active Organization
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/auth/organization/set-active
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "organizationId": "{{organizationId}}"
+  }
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  try {
+    const data = res.getBody();
+    const id = data && (data.id || (data.organization && data.organization.id));
+    if (id) bru.setVar('organizationId', id);
+  } catch (e) {}
+}
+
+docs {
+  Switches the active tenant for the current session. Pass `organizationId` or `organizationSlug`. Pass `organizationId: null` to clear it. After this, /api/urls operations act within this org.
+}

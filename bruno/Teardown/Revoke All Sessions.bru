@@ -1,0 +1,23 @@
+meta {
+  name: Revoke All Sessions
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/auth/revoke-sessions
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+}
+
+docs {
+  Signs out everywhere — invalidates all sessions for the user.
+}

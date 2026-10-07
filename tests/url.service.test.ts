@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { UrlService } from "../src/modules/url/url.service";
-import { ConflictError, GoneError, NotFoundError } from "../src/common/errors";
+import { ConflictError, ForbiddenError, GoneError, NotFoundError } from "../src/common/errors";
 import type { Url } from "../src/db/schema";
 import type { UrlRepository } from "../src/modules/url/url.repository";
 
@@ -124,17 +124,46 @@ describe("listForOrganization", () => {
 });
 
 describe("remove", () => {
+  const member = { organizationId: "org-1", userId: "user-2", isOrgAdmin: false };
+  const admin = { ...member, isOrgAdmin: true };
+
   it("404s when nothing was deleted", async () => {
     repo.findByCode.mockResolvedValue(makeUrl());
     repo.softDelete.mockResolvedValue(false);
-    await expect(service.remove("abc1234", "org-1")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(service.remove("abc1234", admin)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("404s another organization's link", async () => {
+    repo.findByCode.mockResolvedValue(makeUrl({ organizationId: "other-org" }));
+    await expect(service.remove("abc1234", admin)).rejects.toBeInstanceOf(NotFoundError);
+    expect(repo.softDelete).not.toHaveBeenCalled();
+  });
+
+  it("lets a plain member delete only their own links", async () => {
+    repo.findByCode.mockResolvedValue(makeUrl({ userId: "user-1" }));
+    await expect(service.remove("abc1234", member)).rejects.toBeInstanceOf(ForbiddenError);
+    expect(repo.softDelete).not.toHaveBeenCalled();
+
+    repo.findByCode.mockResolvedValue(makeUrl({ userId: "user-2" }));
+    repo.softDelete.mockResolvedValue(true);
+    await expect(service.remove("abc1234", member)).resolves.toBeUndefined();
+  });
+
+  it("lets an admin delete any member's link", async () => {
+    repo.findByCode.mockResolvedValue(makeUrl({ userId: "user-1" }));
+    repo.softDelete.mockResolvedValue(true);
+    await expect(service.remove("abc1234", admin)).resolves.toBeUndefined();
   });
 
   it("evicts the cached redirect", async () => {
     repo.findByCode.mockResolvedValue(makeUrl());
     repo.softDelete.mockResolvedValue(true);
     await service.resolve("abc1234", {});
-    await service.remove("abc1234", "org-1");
+    await service.remove("abc1234", {
+      organizationId: "org-1",
+      userId: "user-1",
+      isOrgAdmin: true,
+    });
     repo.findByCode.mockResolvedValue(undefined);
     await expect(service.resolve("abc1234", {})).rejects.toBeInstanceOf(NotFoundError);
   });

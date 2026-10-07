@@ -1,0 +1,26 @@
+meta {
+  name: Verify Email
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/auth/verify-email?token={{verificationToken}}
+  body: none
+  auth: none
+}
+
+params:query {
+  token: {{verificationToken}}
+}
+
+tests {
+  // Needs a real token from the verification email; skipped when unset.
+  if (bru.getEnvVar('verificationToken')) {
+    test('2xx success', () => expect(res.getStatus()).to.be.oneOf([200, 201, 302]));
+  }
+}
+
+docs {
+  Better Auth built-in route. Copy the `token` query param from the verification email link into the `verificationToken` collection variable, then run this (or click the link). Then run Sign In.
+}

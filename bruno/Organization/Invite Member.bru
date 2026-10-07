@@ -1,0 +1,35 @@
+meta {
+  name: Invite Member
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/auth/organization/invite-member
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "email": "teammate@example.com",
+    "role": "member",
+    "organizationId": "{{organizationId}}"
+  }
+}
+
+tests {
+  test('2xx success', () => expect(res.getStatus()).to.be.oneOf([200, 201]));
+  try {
+    const data = res.getBody();
+    if (data && data.id) bru.setVar('invitationId', data.id);
+  } catch (e) {}
+}
+
+docs {
+  Invites a user by email (role: owner | admin | member). Sends the invitation email (logged in dev). The invitation id is captured into `invitationId`. Pass `resend: true` to re-send a pending invite.
+}

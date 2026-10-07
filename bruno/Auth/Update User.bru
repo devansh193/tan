@@ -1,0 +1,31 @@
+meta {
+  name: Update User
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/auth/update-user
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "name": "Test User Renamed",
+    "image": "https://example.com/avatar.png"
+  }
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  test('status true', () => expect(res.getBody().status).to.equal(true));
+}
+
+docs {
+  Updates the signed-in user's profile (`name`, `image`). Email can't be changed here (400 EMAIL_CAN_NOT_BE_UPDATED).
+}

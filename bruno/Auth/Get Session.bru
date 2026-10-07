@@ -1,0 +1,33 @@
+meta {
+  name: Get Session
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/auth/get-session
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  try {
+    const data = res.getBody();
+    if (data && data.session) {
+      test('session returned', () => expect(data.session).to.be.an('object'));
+      const orgId = data.session.activeOrganizationId;
+      if (orgId) bru.setVar('organizationId', orgId);
+    } else {
+      test('session is null (signed out?)', () => expect(data).to.be.null);
+    }
+  } catch (e) {}
+}
+
+docs {
+  Returns the current user + session. The session includes `activeOrganizationId` (the active tenant), captured here into the `organizationId` variable.
+}

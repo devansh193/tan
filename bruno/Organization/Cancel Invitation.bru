@@ -1,0 +1,29 @@
+meta {
+  name: Cancel Invitation
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/api/auth/organization/cancel-invitation
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "invitationId": "{{invitationId}}"
+  }
+}
+
+tests {
+  test('2xx or expected error', () => expect(res.getStatus()).to.be.oneOf([200, 201, 400, 403, 404]));
+}
+
+docs {
+  Cancels a pending invitation (called by an admin/owner of the org).
+}

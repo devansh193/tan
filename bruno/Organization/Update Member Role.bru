@@ -1,0 +1,31 @@
+meta {
+  name: Update Member Role
+  type: http
+  seq: 14
+}
+
+post {
+  url: {{baseUrl}}/api/auth/organization/update-member-role
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "memberId": "{{memberId}}",
+    "role": "admin",
+    "organizationId": "{{organizationId}}"
+  }
+}
+
+tests {
+  test('2xx or expected error', () => expect(res.getStatus()).to.be.oneOf([200, 201, 400, 403, 404]));
+}
+
+docs {
+  Changes a member's role (owner | admin | member). Requires admin/owner.
+}

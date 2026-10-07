@@ -1,0 +1,28 @@
+meta {
+  name: List Organizations
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/auth/organization/list
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  try {
+    const data = res.getBody();
+    test('returns array', () => expect(data).to.be.an('array'));
+    if (data.length && data[0].id) bru.setVar('organizationId', data[0].id);
+  } catch (e) {}
+}
+
+docs {
+  Lists organizations the current user belongs to.
+}

@@ -27,10 +27,7 @@ function slugify(value: string): string {
  * Creates a personal organization for a brand-new user and adds them as owner.
  * The slug is suffixed with a short random token to stay globally unique.
  */
-export async function createPersonalOrganization(
-  userId: string,
-  name: string,
-): Promise<string> {
+export async function createPersonalOrganization(userId: string, name: string): Promise<string> {
   const orgId = generateId();
   const slug = `${slugify(name)}-${generateId().slice(0, 8)}`;
 
@@ -61,21 +58,23 @@ export async function getFirstOrganizationId(userId: string): Promise<string | n
   return row?.organizationId ?? null;
 }
 
-/** Confirms a user belongs to an organization (tenant authorization). */
-export async function isMember(userId: string, organizationId: string): Promise<boolean> {
+/**
+ * The user's role in an organization, or null if they aren't a member
+ * (tenant authorization). Better Auth may store several roles comma-separated.
+ */
+export async function getMemberRoles(
+  userId: string,
+  organizationId: string,
+): Promise<string[] | null> {
   const row = await db.query.member.findFirst({
-    where: (m, { and: andOp }) =>
-      andOp(eq(m.userId, userId), eq(m.organizationId, organizationId)),
-    columns: { id: true },
+    where: (m, { and: andOp }) => andOp(eq(m.userId, userId), eq(m.organizationId, organizationId)),
+    columns: { role: true },
   });
-  return Boolean(row);
+  return row ? row.role.split(",").map((r) => r.trim()) : null;
 }
 
 /** Best-effort personal-org creation that never blocks sign-up. */
-export async function ensurePersonalOrganization(
-  userId: string,
-  name: string,
-): Promise<void> {
+export async function ensurePersonalOrganization(userId: string, name: string): Promise<void> {
   try {
     await createPersonalOrganization(userId, name);
   } catch (err) {

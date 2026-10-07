@@ -1,0 +1,27 @@
+meta {
+  name: Send Verification Email
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/auth/send-verification-email
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "{{email}}"
+  }
+}
+
+tests {
+  test('2xx success', () => expect(res.getStatus()).to.be.oneOf([200, 201]));
+}
+
+docs {
+  Resends the verification email. Use the same email as Sign Up.
+
+  In dev, the link is logged in the server console. In production, check your inbox or the Resend dashboard.
+}

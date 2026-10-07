@@ -1,0 +1,39 @@
+meta {
+  name: Sign Up (email)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/auth/sign-up/email
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "Test User",
+    "email": "{{email}}",
+    "password": "{{password}}"
+  }
+}
+
+vars:pre-request {
+  email: devanshverma1609@gmail.com
+  password: Devansh@12345
+}
+
+tests {
+  test('2xx or user exists', () => expect(res.getStatus()).to.be.oneOf([200, 201, 422]));
+  if (res.getStatus() === 200 || res.getStatus() === 201) {
+    test('set-auth-token header present', () => expect(res.getHeader('set-auth-token')).to.be.a('string').and.not.empty);
+    const token = res.getHeader('set-auth-token');
+    if (token) bru.setVar('sessionToken', token);
+  }
+}
+
+docs {
+  Creates an account. The session token is in the `set-auth-token` response header (bearer plugin).
+  
+  A personal organization is created automatically for the new user. In production, a verification email is sent and sign-in is blocked until verified.
+}

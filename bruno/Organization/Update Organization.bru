@@ -1,0 +1,32 @@
+meta {
+  name: Update Organization
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/auth/organization/update
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "organizationId": "{{organizationId}}",
+    "data": {
+      "name": "Ikiru"
+    }
+  }
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+}
+
+docs {
+  Updates org fields. `data` may include `name`, `slug`, `logo`, `metadata`. Requires admin/owner role.
+}

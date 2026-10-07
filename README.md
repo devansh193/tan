@@ -172,6 +172,11 @@ curl -s -X POST localhost:3000/api/urls \
 > 💡 A ready-to-import **Postman collection**
 > (`url-shortener.postman_collection.json`) is included — it auto-captures tokens
 > and the short code so requests chain together.
+>
+> A **Bruno collection** lives in `bruno/` (open the folder in Bruno, pick the
+> `Local` environment). Run it end to end from the CLI:
+> `npx @usebruno/cli run --env Local --env-var email=me+$(date +%s)@example.com`.
+> A full run makes ~30 auth calls, so raise `AUTH_RATE_LIMIT_MAX` above the default 20.
 
 ### Per-platform attribution
 

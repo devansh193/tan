@@ -1,0 +1,33 @@
+meta {
+  name: Get Invitation
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/auth/organization/get-invitation?id={{invitationId}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  id: {{invitationId}}
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+tests {
+  test('2xx or not found', () => expect(res.getStatus()).to.be.oneOf([200, 403, 404]));
+  try {
+    if (res.getStatus() === 200) {
+      const data = res.getBody();
+      test('invitation id present', () => expect(data.id).to.be.a('string').and.not.empty);
+    }
+  } catch (e) {}
+}
+
+docs {
+  Fetches a single invitation by id (used by the accept-invitation page).
+}
