@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { env } from "../../config/env";
+
+const ownHost = new URL(env.BASE_URL).host.toLowerCase();
 
 /** Allowed characters and length for a user-chosen alias. */
 const aliasPattern = /^[A-Za-z0-9_-]{3,32}$/;
@@ -9,7 +12,14 @@ export const createUrlSchema = z.object({
     .string()
     .url()
     .max(2048)
-    .refine((u) => /^https?:\/\//i.test(u), "must be an http(s) URL"),
+    .refine((u) => /^https?:\/\//i.test(u), "must be an http(s) URL")
+    // "https://bank.com@evil.com" is a classic phishing disguise.
+    .refine((u) => {
+      const { username, password } = new URL(u);
+      return !username && !password;
+    }, "must not contain credentials")
+    // Pointing at ourselves enables redirect loops and chain obfuscation.
+    .refine((u) => new URL(u).host.toLowerCase() !== ownHost, "must not point to this shortener"),
   // Optional user-chosen short code.
   customAlias: z.string().regex(aliasPattern, "3-32 chars: letters, digits, - or _").optional(),
   // Optional expiry; must be in the future if provided.

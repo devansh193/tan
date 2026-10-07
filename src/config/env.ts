@@ -13,6 +13,14 @@ const envSchema = z.object({
   BASE_URL: z.string().url().default("http://localhost:3000"),
   // Comma-separated allowlist of CORS origins, or "*" to allow all.
   CORS_ORIGINS: z.string().default("*"),
+  // Express "trust proxy": hop count ("1"), "true"/"false", or a subnet list
+  // ("loopback, 10.0.0.0/8"). Must match your proxy chain or req.ip is wrong.
+  TRUST_PROXY: z
+    .string()
+    .default("1")
+    .transform((v) =>
+      /^\d+$/.test(v) ? Number(v) : v === "true" ? true : v === "false" ? false : v,
+    ),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 
   DATABASE_URL: z.string().url(),
@@ -34,7 +42,19 @@ const envSchema = z.object({
     .default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
+  // Public redirects, per IP per minute. Generous: offices share one NAT IP.
+  REDIRECT_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(600),
 
+  // Shared rate-limit store across instances. Without it, limits are per process.
+  REDIS_URL: z.string().url().optional(),
+
+  // Google Safe Browsing v4 key; when set, flagged URLs can't be shortened.
+  SAFE_BROWSING_API_KEY: z.string().optional(),
+
+  // Delete click analytics older than this many days. Unset = keep forever.
+  CLICK_RETENTION_DAYS: z.coerce.number().int().positive().optional(),
+
+  // Legacy only: used to backfill codes of links created before random codes.
   SQIDS_MIN_LENGTH: z.coerce.number().int().min(0).default(6),
   SQIDS_ALPHABET: z.string().optional(),
 });

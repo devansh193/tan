@@ -22,6 +22,27 @@
       "when": 1782036632772,
       "tag": "0002_organization",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791383906997,
+      "tag": "0003_short_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791383912092,
+      "tag": "0004_drop_custom_alias",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791386132167,
+      "tag": "0005_click_source",
+      "breakpoints": true
     }
   ]
 }

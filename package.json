@@ -1,7 +1,7 @@
 {
   "name": "url-shortener",
   "version": "1.0.0",
-  "description": "URL shortener (counter + Sqids bijective encoding) — Express, TypeScript, Drizzle, Postgres",
+  "description": "URL shortener (random unguessable codes) — Express, TypeScript, Drizzle, Postgres",
   "packageManager": "bun@1.2.16",
   "main": "dist/index.js",
   "scripts": {
@@ -32,6 +32,8 @@
     "pg": "^8.13.1",
     "pino": "^9.5.0",
     "pino-http": "^10.3.0",
+    "rate-limit-redis": "^4",
+    "redis": "^6.3.0",
     "sqids": "^0.3.0",
     "ua-parser-js": "^2.0.10",
     "zod": "^3.23.8"

@@ -8,6 +8,21 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: url_shortener
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/url_shortener
+      BETTER_AUTH_SECRET: ci-only-secret-0123456789abcdef0123
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -18,3 +33,9 @@ jobs:
       - run: bun run lint
       - run: bun run format:check
       - run: bun run test
+      - run: bun run db:migrate
+      - name: Integration tests (Postgres + Redis)
+        run: bun run test tests/integration.test.ts
+        env:
+          RUN_DB_TESTS: "1"
+          REDIS_URL: redis://localhost:6379

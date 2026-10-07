@@ -38,7 +38,8 @@ export const urlController = {
     res.status(204).send();
   }),
 
-  // GET /:code  (public) — resolve and redirect to the original URL.
+  // GET /:code[/:channel]  (public) — resolve and redirect to the original URL.
+  // The optional channel tag (`/abc1234/ig`) attributes the click to a platform.
   redirect: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const q = req.query;
     const originalUrl = await urlService.resolve(req.params.code, {
@@ -48,6 +49,8 @@ export const urlController = {
       utmSource: typeof q.utm_source === "string" ? q.utm_source : undefined,
       utmMedium: typeof q.utm_medium === "string" ? q.utm_medium : undefined,
       utmCampaign: typeof q.utm_campaign === "string" ? q.utm_campaign : undefined,
+      channel: req.params.channel,
+      queryKeys: Object.keys(q),
     });
     res.redirect(302, originalUrl);
   }),

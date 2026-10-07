@@ -1,34 +1,26 @@
-import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { clicks, urls, type Click, type Url } from "../../db/schema";
+import type { ClickData } from "./click-analytics";
 
 /** Fields needed to create a URL. */
 export interface CreateUrlData {
   originalUrl: string;
   organizationId: string;
   userId: string;
-  customAlias?: string;
+  code: string;
   expiresAt?: Date;
 }
 
-/** Metadata captured for a single redirect. */
-export interface ClickData {
-  ip?: string;
-  country?: string;
-  state?: string;
-  city?: string;
-  browser?: string;
-  os?: string;
-  device?: string;
-  referer?: string;
-  utmSource?: string;
-  utmMedium?: string;
-  utmCampaign?: string;
+/** One click to persist, as buffered by the ClickRecorder. */
+export interface ClickRow extends ClickData {
+  urlId: number;
+  createdAt: Date;
 }
 
 /** Data-access layer for shortened URLs and their click analytics. */
 export class UrlRepository {
-  /** Inserts a URL for a user; the DB assigns the bigserial counter id. */
+  /** Inserts a URL; a taken `code` raises a unique violation (23505). */
   async create(data: CreateUrlData): Promise<Url> {
     const [row] = await db
       .insert(urls)
@@ -36,24 +28,17 @@ export class UrlRepository {
         originalUrl: data.originalUrl,
         organizationId: data.organizationId,
         userId: data.userId,
-        customAlias: data.customAlias ?? null,
+        code: data.code,
         expiresAt: data.expiresAt ?? null,
       })
       .returning();
     return row;
   }
 
-  /** Finds a live (non-deleted) URL by counter id. */
-  findById(id: number): Promise<Url | undefined> {
+  /** Finds a live (non-deleted) URL by its short code (alias or generated). */
+  findByCode(code: string): Promise<Url | undefined> {
     return db.query.urls.findFirst({
-      where: and(eq(urls.id, id), isNull(urls.deletedAt)),
-    });
-  }
-
-  /** Finds a live URL by its custom alias. */
-  findByAlias(alias: string): Promise<Url | undefined> {
-    return db.query.urls.findFirst({
-      where: and(eq(urls.customAlias, alias), isNull(urls.deletedAt)),
+      where: and(eq(urls.code, code), isNull(urls.deletedAt)),
     });
   }
 
@@ -81,39 +66,50 @@ export class UrlRepository {
     const deleted = await db
       .update(urls)
       .set({ deletedAt: new Date() })
-      .where(
-        and(
-          eq(urls.id, id),
-          eq(urls.organizationId, organizationId),
-          isNull(urls.deletedAt),
-        ),
-      )
+      .where(and(eq(urls.id, id), eq(urls.organizationId, organizationId), isNull(urls.deletedAt)))
       .returning({ id: urls.id });
     return deleted.length > 0;
   }
 
-  /** Records a click: inserts an analytics row and bumps the counter atomically. */
-  async recordClick(id: number, data: ClickData): Promise<void> {
+  /**
+   * Persists a batch of clicks: one multi-row insert plus one counter update per
+   * distinct URL, so a hot link costs one row lock per batch, not per click.
+   */
+  async recordClicks(rows: ClickRow[]): Promise<void> {
+    if (!rows.length) return;
+    const perUrl = new Map<number, number>();
+    for (const r of rows) perUrl.set(r.urlId, (perUrl.get(r.urlId) ?? 0) + 1);
+    const deltas = sql.join(
+      [...perUrl].map(([id, n]) => sql`(${id}::bigint, ${n}::bigint)`),
+      sql`, `,
+    );
+
     await db.transaction(async (tx) => {
-      await tx.insert(clicks).values({
-        urlId: id,
-        ip: data.ip ?? null,
-        country: data.country ?? null,
-        state: data.state ?? null,
-        city: data.city ?? null,
-        browser: data.browser ?? null,
-        os: data.os ?? null,
-        device: data.device ?? null,
-        referer: data.referer ?? null,
-        utmSource: data.utmSource ?? null,
-        utmMedium: data.utmMedium ?? null,
-        utmCampaign: data.utmCampaign ?? null,
-      });
-      await tx
-        .update(urls)
-        .set({ clickCount: sql`${urls.clickCount} + 1` })
-        .where(eq(urls.id, id));
+      await tx.insert(clicks).values(rows);
+      await tx.execute(sql`
+        UPDATE ${urls} SET click_count = ${urls.clickCount} + d.n
+        FROM (VALUES ${deltas}) AS d(id, n)
+        WHERE ${urls.id} = d.id`);
     });
+  }
+
+  /** Deletes click analytics older than the cutoff (retention policy). */
+  async deleteClicksBefore(cutoff: Date): Promise<number> {
+    const result = await db.delete(clicks).where(lt(clicks.createdAt, cutoff));
+    return result.rowCount ?? 0;
+  }
+
+  /** Click counts per attributed source, biggest first. */
+  sourceBreakdown(id: number) {
+    const source = sql<string>`coalesce(${clicks.source}, 'unknown')`;
+    const method = sql<string>`coalesce(${clicks.sourceMethod}, 'none')`;
+    const clicksCount = count();
+    return db
+      .select({ source, method, clicks: clicksCount })
+      .from(clicks)
+      .where(eq(clicks.urlId, id))
+      .groupBy(source, method)
+      .orderBy(desc(clicksCount), source, method);
   }
 
   /** Most recent clicks for a URL (for the stats endpoint). */

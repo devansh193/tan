@@ -1,4 +1,4 @@
-import { bigint, bigserial, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { bigint, bigserial, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { organization, user } from "./auth-schema";
 
 // Authentication tables (user, session, account, verification, jwks) live in
@@ -18,7 +18,7 @@ export const urls = pgTable(
   {
     id: bigserial("id", { mode: "number" }).primaryKey(),
     originalUrl: text("original_url").notNull(),
-    customAlias: text("custom_alias").unique(),
+    code: text("code").notNull().unique(),
     // Tenant that owns the link. All management operations are scoped to the
     // caller's active organization.
     organizationId: text("organization_id")
@@ -28,7 +28,7 @@ export const urls = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    clickCount: integer("click_count").notNull().default(0),
+    clickCount: bigint("click_count", { mode: "number" }).notNull().default(0),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -58,6 +58,10 @@ export const clicks = pgTable(
     utmSource: text("utm_source"),
     utmMedium: text("utm_medium"),
     utmCampaign: text("utm_campaign"),
+    // Attributed platform ("instagram", "x", "unknown"…) and how it was
+    // determined ("channel" | "utm" | "clickid" | "ua" | "referer" | "none").
+    source: text("source"),
+    sourceMethod: text("source_method"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("clicks_url_id_idx").on(t.urlId)],

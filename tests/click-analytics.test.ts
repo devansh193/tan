@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildClickData } from "../src/modules/url/click-analytics";
+import { anonymizeIp, buildClickData } from "../src/modules/url/click-analytics";
 
 describe("buildClickData", () => {
   it("parses geo, UA, referer, and UTM query params", () => {
@@ -13,7 +13,7 @@ describe("buildClickData", () => {
       utmCampaign: "launch",
     });
 
-    expect(data.ip).toBe("8.8.8.8");
+    expect(data.ip).toBe("8.8.8.0"); // stored anonymized, geo used the full IP
     expect(data.country).toBe("US");
     expect(data.browser).toMatch(/^Chrome/);
     expect(data.os).toMatch(/^macOS/);
@@ -27,12 +27,23 @@ describe("buildClickData", () => {
   it("falls back to UTM params on the referer URL", () => {
     const data = buildClickData({
       referer: "https://example.com/page?utm_source=twitter&utm_medium=social&utm_campaign=promo",
-      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
     });
 
     expect(data.utmSource).toBe("twitter");
     expect(data.utmMedium).toBe("social");
     expect(data.utmCampaign).toBe("promo");
     expect(data.device).toBe("mobile");
+  });
+});
+
+describe("anonymizeIp", () => {
+  it("truncates IPv4 to /24 and IPv6 to /48", () => {
+    expect(anonymizeIp("203.0.113.77")).toBe("203.0.113.0");
+    expect(anonymizeIp("::ffff:203.0.113.77")).toBe("203.0.113.0");
+    expect(anonymizeIp("2001:db8:abcd:12::1")).toBe("2001:db8:abcd::");
+    expect(anonymizeIp("2001:db8::1")).toBe("2001:db8::");
+    expect(anonymizeIp("garbage")).toBeUndefined();
   });
 });

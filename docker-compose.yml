@@ -17,6 +17,13 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: url_shortener_redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+
   # Optional: run the API in Docker too (`docker compose up`). For local dev you
   # can instead run only postgres and use `bun run dev` on the host.
   app:
@@ -26,12 +33,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       NODE_ENV: production
       PORT: "3000"
       BASE_URL: http://localhost:3000
       # Connects to the postgres service on the internal Docker network.
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/url_shortener
+      REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: change-me-access-secret
     ports:
       - "3000:3000"
