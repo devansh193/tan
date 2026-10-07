@@ -7,16 +7,16 @@ import { organization, user } from "./auth-schema";
 export * from "./auth-schema";
 
 /**
- * Shortened URLs. The `bigserial` id is the monotonic counter that drives
- * short-code generation: the default code is `sqids.encode([id])`. Because
- * Sqids is a bijection, that code is reversible and collision-free, so no slug
- * column or uniqueness check is needed. An optional `customAlias` provides a
- * user-chosen code that takes precedence on resolution.
+ * Shortened URLs. `publicId` is the stable API identity; `code` is the
+ * editable path segment (custom or random) in one unique namespace.
  */
 export const urls = pgTable(
   "urls",
   {
     id: bigserial("id", { mode: "number" }).primaryKey(),
+    // Immutable public identifier (`link_…`) used by the API; the bigserial id
+    // stays internal.
+    publicId: text("public_id").notNull().unique(),
     originalUrl: text("original_url").notNull(),
     code: text("code").notNull().unique(),
     // Tenant that owns the link. All management operations are scoped to the
@@ -31,10 +31,15 @@ export const urls = pgTable(
     clickCount: bigint("click_count", { mode: "number" }).notNull().default(0),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // Millisecond precision so keyset cursors round-trip through a JS Date.
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 })
+      .notNull()
+      .defaultNow(),
   },
   (t) => [
-    index("urls_organization_id_created_at_idx").on(t.organizationId, t.createdAt),
+    // Keyset pagination: (sort key, public_id) within an organization.
+    index("urls_org_created_idx").on(t.organizationId, t.createdAt, t.publicId),
+    index("urls_org_clicks_idx").on(t.organizationId, t.clickCount, t.publicId),
     index("urls_user_id_created_at_idx").on(t.userId, t.createdAt),
   ],
 );
