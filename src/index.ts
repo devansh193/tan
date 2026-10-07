@@ -3,8 +3,8 @@ import { env } from "./config/env";
 import { pool } from "./db/client";
 import { logger } from "./common/logger";
 import { redis } from "./lib/redis";
-import { urlRepository } from "./modules/url/url.repository";
-import { clickRecorder } from "./modules/url/url.service";
+import { analyticsRepository } from "./modules/analytics/analytics.repository";
+import { clickRecorder } from "./modules/analytics/click-recorder";
 
 const app = createApp();
 
@@ -19,7 +19,7 @@ const server = app.listen(env.PORT, () => {
 if (env.CLICK_RETENTION_DAYS) {
   const days = env.CLICK_RETENTION_DAYS;
   const sweep = () =>
-    urlRepository
+    analyticsRepository
       .deleteClicksBefore(new Date(Date.now() - days * 86_400_000))
       .then((n) => n && logger.info({ deleted: n }, "Pruned old click analytics"))
       .catch((err) => logger.error({ err }, "Click retention sweep failed"));

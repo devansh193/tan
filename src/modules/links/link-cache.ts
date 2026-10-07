@@ -38,3 +38,6 @@ export class LinkCache {
     this.entries.delete(code);
   }
 }
+
+/** Process-wide redirect cache shared by link management and redirects. */
+export const linkCache = new LinkCache();

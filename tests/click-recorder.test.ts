@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { ClickRecorder } from "../src/modules/url/click-recorder";
-import type { ClickRow } from "../src/modules/url/url.repository";
+import { ClickRecorder } from "../src/modules/analytics/click-recorder";
+import type { ClickRow } from "../src/modules/analytics/analytics.repository";
 
 const browser = {
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0 Safari/537.36",

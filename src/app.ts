@@ -9,8 +9,8 @@ import { pool } from "./db/client";
 import { auth } from "./lib/auth";
 import { asyncHandler } from "./common/asyncHandler";
 import { limiter } from "./common/middleware/rate-limit";
-import { urlRoutes } from "./modules/url/url.routes";
-import { urlController } from "./modules/url/url.controller";
+import { v1Routes } from "./routes/v1";
+import { redirectRoutes } from "./modules/redirect/redirect.routes";
 import { errorHandler, notFoundHandler } from "./common/middleware/errorHandler";
 
 /** Builds the Express application with middleware and routes wired up. */
@@ -50,17 +50,11 @@ export const createApp = () => {
     }),
   );
 
-  // API routes (management traffic: strict limit).
-  app.use("/api/urls", limiter("api", env.RATE_LIMIT_WINDOW_MS, env.RATE_LIMIT_MAX), urlRoutes);
+  // Management API (strict limit), grouped by resource under /api/v1.
+  app.use("/api/v1", limiter("api", env.RATE_LIMIT_WINDOW_MS, env.RATE_LIMIT_MAX), v1Routes);
 
-  // Public redirect: GET /:code[/:channel] -> original URL. Own, much higher per-minute
-  // limit (blunts code scanning without throttling real visitors). Kept last so
-  // it never shadows the API/health routes above.
-  app.get(
-    "/:code/:channel?",
-    limiter("redirect", 60_000, env.REDIRECT_RATE_LIMIT_MAX),
-    urlController.redirect,
-  );
+  // Public redirects. Kept last so they never shadow the routes above.
+  app.use(redirectRoutes);
 
   // 404 + central error handling, registered after all routes.
   app.use(notFoundHandler);

@@ -32,9 +32,7 @@ export const urls = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     // Millisecond precision so keyset cursors round-trip through a JS Date.
-    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     // Keyset pagination: (sort key, public_id) within an organization.

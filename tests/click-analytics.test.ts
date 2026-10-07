@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { anonymizeIp, buildClickData } from "../src/modules/url/click-analytics";
+import { anonymizeIp, buildClickData } from "../src/modules/analytics/click-analytics";
 
 describe("buildClickData", () => {
   it("parses geo, UA, referer, and UTM query params", () => {

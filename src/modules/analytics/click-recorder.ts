@@ -1,7 +1,11 @@
 import { logger } from "../../common/logger";
 import { isBot } from "./attribution";
 import { buildClickData, type RedirectMeta } from "./click-analytics";
-import type { ClickRow, UrlRepository } from "./url.repository";
+import {
+  analyticsRepository,
+  type AnalyticsRepository,
+  type ClickRow,
+} from "./analytics.repository";
 
 const FLUSH_INTERVAL_MS = 1000;
 const FLUSH_AT = 500;
@@ -27,7 +31,7 @@ export class ClickRecorder {
   private dropped = 0;
   private readonly timer: NodeJS.Timeout;
 
-  constructor(private readonly repo: Pick<UrlRepository, "recordClicks">) {
+  constructor(private readonly repo: Pick<AnalyticsRepository, "recordClicks">) {
     this.timer = setInterval(() => void this.flush(), FLUSH_INTERVAL_MS);
     this.timer.unref();
   }
@@ -73,3 +77,5 @@ export class ClickRecorder {
     await this.flush(); // anything enqueued while the first flush ran
   }
 }
+
+export const clickRecorder = new ClickRecorder(analyticsRepository);

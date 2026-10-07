@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectSource, isBot, normalizeSource } from "../src/modules/url/attribution";
+import { detectSource, isBot, normalizeSource } from "../src/modules/analytics/attribution";
 
 const UA = {
   chrome:

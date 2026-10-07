@@ -12,10 +12,16 @@ describe("app routing & guards", () => {
     expect(res.body).toEqual({ status: "ok" });
   });
 
-  it("rejects an unauthenticated request to a protected route", async () => {
-    const res = await request(app).get("/api/urls");
-    expect(res.status).toBe(401);
-    expect(res.body.error.code).toBe("UNAUTHORIZED");
+  it("rejects an unauthenticated request to a v1 route", async () => {
+    for (const path of ["/api/v1/links", "/api/v1/links/link_x"]) {
+      const res = await request(app).get(path);
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe("UNAUTHORIZED");
+    }
+  });
+
+  it("no longer serves the legacy /api/urls routes", async () => {
+    expect((await request(app).get("/api/urls")).status).toBe(404);
   });
 
   it("rejects sign-up with an invalid email / short password", async () => {
@@ -33,7 +39,7 @@ describe("app routing & guards", () => {
 
   it("returns 400 for malformed JSON", async () => {
     const res = await request(app)
-      .post("/api/urls")
+      .post("/api/v1/links")
       .set("Content-Type", "application/json")
       .send('{"url": ');
     expect(res.status).toBe(400);

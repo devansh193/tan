@@ -3,7 +3,7 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { db, pool } from "../src/db/client";
 import { member } from "../src/db/schema";
-import { clickRecorder } from "../src/modules/url/url.service";
+import { clickRecorder } from "../src/modules/analytics/click-recorder";
 
 // Full stack against a migrated Postgres: RUN_DB_TESTS=1 DATABASE_URL=... bun run test
 describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
