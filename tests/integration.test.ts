@@ -19,7 +19,7 @@ async function newUser(app: ReturnType<typeof createApp>, prefix: string) {
   expect(signUp.status).toBe(200);
   // Sign in again: the sign-up session predates the personal org.
   const signIn = await request(app).post("/api/auth/sign-in/email").send(creds);
-  const token = (signIn.headers["set-auth-token"] ?? signIn.body.token) as string;
+  const token = signIn.headers["set-auth-token"] ?? signIn.body.token;
   expect(token).toBeTruthy();
   return {
     auth: { Authorization: `Bearer ${token}` },
