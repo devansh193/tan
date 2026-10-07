@@ -1,56 +1,17 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import rateLimit, { type Options } from "express-rate-limit";
-import { RedisStore } from "rate-limit-redis";
 import { pinoHttp } from "pino-http";
 import { toNodeHandler } from "better-auth/node";
 import { env } from "./config/env";
 import { logger } from "./common/logger";
 import { pool } from "./db/client";
 import { auth } from "./lib/auth";
-import { redis } from "./lib/redis";
 import { asyncHandler } from "./common/asyncHandler";
+import { limiter } from "./common/middleware/rate-limit";
 import { urlRoutes } from "./modules/url/url.routes";
 import { urlController } from "./modules/url/url.controller";
 import { errorHandler, notFoundHandler } from "./common/middleware/errorHandler";
-
-/** Consistent 429 body matching our error envelope. */
-const rateLimitHandler = (_req: express.Request, res: express.Response) =>
-  res.status(429).json({ error: { code: "RATE_LIMITED", message: "Too many requests" } });
-
-/**
- * RedisStore loads its Lua scripts in the constructor; if Redis isn't up yet
- * that promise rejects unobserved. The store reloads scripts on first use, so
- * those early failures are safe to ignore.
- */
-class LazyRedisStore extends RedisStore {
-  constructor(...args: ConstructorParameters<typeof RedisStore>) {
-    super(...args);
-    this.incrementScriptSha.catch(() => {});
-    this.getScriptSha.catch(() => {});
-  }
-}
-
-/**
- * A rate limiter whose counters live in Redis when configured, so the limit is
- * shared by every instance. Fails open if Redis is unreachable.
- */
-const limiter = (prefix: string, windowMs: number, max: number) =>
-  rateLimit({
-    windowMs,
-    max,
-    standardHeaders: true,
-    legacyHeaders: false,
-    handler: rateLimitHandler,
-    passOnStoreError: true,
-    ...(redis && {
-      store: new LazyRedisStore({
-        prefix: `rl:${prefix}:`,
-        sendCommand: (...args: string[]) => redis!.sendCommand(args),
-      }) as Options["store"],
-    }),
-  });
 
 /** Builds the Express application with middleware and routes wired up. */
 export const createApp = () => {

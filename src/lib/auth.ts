@@ -5,6 +5,7 @@ import { db } from "../db/client";
 import { env } from "../config/env";
 import { sendEmail } from "./email";
 import { ensurePersonalOrganization, getFirstOrganizationId } from "./org-bootstrap";
+import { ac, roles } from "../modules/auth/permissions";
 import * as authSchema from "../db/auth-schema";
 
 const requireEmailVerification = env.NODE_ENV === "production";
@@ -105,6 +106,8 @@ export const auth = betterAuth({
     bearer(),
     jwt(),
     organization({
+      ac,
+      roles,
       // Pending invites expire after 48 hours.
       invitationExpiresIn: 60 * 60 * 48,
       sendInvitationEmail: async ({ id, email, organization: org, inviter }) => {

@@ -1,6 +1,7 @@
 import type { Response } from "express";
 import { asyncHandler } from "../../common/asyncHandler";
 import type { AuthenticatedRequest } from "../auth/auth.middleware";
+import { canManageAll } from "../auth/permissions";
 import { urlService } from "./url.service";
 import type { ListUrlsQuery } from "./url.schema";
 
@@ -37,7 +38,7 @@ export const urlController = {
     await urlService.remove(req.params.code, {
       organizationId: req.organizationId!,
       userId: req.userId!,
-      isOrgAdmin: req.isOrgAdmin ?? false,
+      isOrgAdmin: canManageAll(req.roles ?? []),
     });
     res.status(204).send();
   }),

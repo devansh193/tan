@@ -4,16 +4,17 @@ import { ForbiddenError, UnauthorizedError } from "../../common/errors";
 import { asyncHandler } from "../../common/asyncHandler";
 import { auth } from "../../lib/auth";
 import { getMemberRoles } from "../../lib/org-bootstrap";
+import { can, type Action, type Resource } from "./permissions";
 
 /**
- * Adds the authenticated user id and active organization (tenant) to the
- * request once verified.
+ * Adds the authenticated user id, active organization (tenant) and the
+ * caller's roles in it to the request once verified.
  */
 export interface AuthenticatedRequest extends Request {
   userId?: string;
   organizationId?: string;
-  /** True for organization owners/admins (may manage every member's links). */
-  isOrgAdmin?: boolean;
+  /** The caller's roles in the active organization (set by requireOrganization). */
+  roles?: string[];
 }
 
 /**
@@ -47,7 +48,20 @@ export const requireOrganization = asyncHandler(
     }
     const roles = await getMemberRoles(req.userId!, req.organizationId);
     if (!roles) throw new ForbiddenError("You are no longer a member of this organization.");
-    req.isOrgAdmin = roles.includes("owner") || roles.includes("admin");
+    req.roles = roles;
     next();
   },
 );
+
+/**
+ * Guards a route by role permission. Must run after `requireOrganization`;
+ * uses the roles it loaded, so it costs no extra query.
+ */
+export const requirePermission =
+  <R extends Resource>(resource: R, action: Action<R>) =>
+  (req: AuthenticatedRequest, _res: Response, next: NextFunction): void => {
+    if (!can(req.roles ?? [], resource, action)) {
+      throw new ForbiddenError(`Your role does not allow ${resource}:${action}`);
+    }
+    next();
+  };
