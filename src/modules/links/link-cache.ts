@@ -3,21 +3,21 @@ export interface CachedLink {
   id: number;
   originalUrl: string;
   expiresAt: Date | null;
+  redirectType: 301 | 302;
 }
 
 const TTL_MS = 30_000;
 const MAX_ENTRIES = 50_000;
 
 /**
- * In-process LRU + TTL cache for redirect lookups, so hot links skip the DB.
- *
- * ponytail: per-process — a delete on another instance stays visible here for
- * up to TTL_MS. Move to Redis with pub/sub invalidation if that window matters.
+ * In-process LRU + TTL cache (L1) for redirect lookups. Stores misses as
+ * `null` so code scans don't reach Redis or the DB; `get` returns `undefined`
+ * when there is no entry at all.
  */
 export class LinkCache {
-  private readonly entries = new Map<string, { link: CachedLink; until: number }>();
+  private readonly entries = new Map<string, { link: CachedLink | null; until: number }>();
 
-  get(code: string): CachedLink | undefined {
+  get(code: string): CachedLink | null | undefined {
     const hit = this.entries.get(code);
     if (!hit) return undefined;
     this.entries.delete(code);
@@ -26,7 +26,7 @@ export class LinkCache {
     return hit.link;
   }
 
-  set(code: string, link: CachedLink): void {
+  set(code: string, link: CachedLink | null): void {
     this.entries.delete(code);
     this.entries.set(code, { link, until: Date.now() + TTL_MS });
     if (this.entries.size > MAX_ENTRIES) {
@@ -38,6 +38,3 @@ export class LinkCache {
     this.entries.delete(code);
   }
 }
-
-/** Process-wide redirect cache shared by link management and redirects. */
-export const linkCache = new LinkCache();

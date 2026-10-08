@@ -5,8 +5,12 @@ import { logger } from "./common/logger";
 import { redis } from "./lib/redis";
 import { analyticsRepository } from "./modules/analytics/analytics.repository";
 import { clickRecorder } from "./modules/analytics/click-recorder";
+import { linkStore } from "./modules/links/link-store";
 
 const app = createApp();
+
+// Cross-instance redirect-cache invalidation (no-op without REDIS_URL).
+void linkStore.start();
 
 const server = app.listen(env.PORT, () => {
   logger.info(`URL shortener listening on ${env.BASE_URL} (port ${env.PORT})`);
@@ -33,6 +37,7 @@ const shutdown = (signal: string) => {
   server.close(() => {
     clickRecorder
       .stop()
+      .then(() => linkStore.stop())
       .then(() => Promise.all([pool.end(), redis?.quit()]))
       .then(() => process.exit(0))
       .catch(() => process.exit(1));
