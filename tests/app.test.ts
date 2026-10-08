@@ -32,6 +32,19 @@ describe("app routing & guards", () => {
     expect(res.status).toBeLessThan(500);
   });
 
+  it("serves robots.txt that blocks only the API", async () => {
+    const res = await request(app).get("/robots.txt");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/plain/);
+    expect(res.text).toBe("User-agent: *\nDisallow: /api/\n");
+  });
+
+  it("marks redirect-route responses noindex, even 404s", async () => {
+    const res = await request(app).get("/favicon.ico");
+    expect(res.status).toBe(404);
+    expect(res.headers["x-robots-tag"]).toBe("noindex, nofollow");
+  });
+
   it("404s an unknown route", async () => {
     const res = await request(app).get("/api/does-not-exist");
     expect(res.status).toBe(404);
