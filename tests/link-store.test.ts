@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { LinkStore, type RedisLike } from "../src/modules/links/link-store";
+import { LinkStore } from "../src/modules/links/link-store";
 import type { Url } from "../src/db/schema";
 
 const row = (over: Partial<Url> = {}): Url => ({
@@ -27,12 +27,12 @@ const fakeRedis = () => {
   return {
     kv,
     published,
-    get: vi.fn(async (k: string) => kv.get(k) ?? null),
-    del: vi.fn(async (keys: string[]) => keys.forEach((k) => kv.delete(k))),
-    publish: vi.fn(async (_c: string, msg: string) => void published.push(msg)),
-    sendCommand: vi.fn(async (args: string[]) => {
+    get: vi.fn((k: string) => Promise.resolve(kv.get(k) ?? null)),
+    del: vi.fn((keys: string[]) => Promise.resolve(keys.forEach((k) => kv.delete(k)))),
+    publish: vi.fn((_c: string, msg: string) => Promise.resolve(void published.push(msg))),
+    sendCommand: vi.fn((args: string[]) => {
       kv.set(args[1], args[2]); // SET key value EX ttl
-      return "OK";
+      return Promise.resolve("OK");
     }),
     duplicate: vi.fn(),
   };
@@ -75,7 +75,7 @@ describe("LinkStore with Redis", () => {
   it("writes hits to L2 for 1h and misses for 30s", async () => {
     const redis = fakeRedis();
     repo.findByCode.mockResolvedValueOnce(row()).mockResolvedValueOnce(undefined);
-    const store = new LinkStore(repo, redis as unknown as RedisLike);
+    const store = new LinkStore(repo, redis);
     await store.get("abc1234");
     await store.get("nope");
     await vi.waitFor(() => expect(redis.sendCommand).toHaveBeenCalledTimes(2));
@@ -106,7 +106,7 @@ describe("LinkStore with Redis", () => {
         redirectType: 302,
       }),
     );
-    const store = new LinkStore(repo, redis as unknown as RedisLike);
+    const store = new LinkStore(repo, redis);
     const link = await store.get("abc1234");
     expect(link).toEqual({
       id: 7,
@@ -122,7 +122,7 @@ describe("LinkStore with Redis", () => {
     try {
       const redis = fakeRedis();
       repo.findByCode.mockResolvedValue(row());
-      const store = new LinkStore(repo, redis as unknown as RedisLike, undefined, 1000);
+      const store = new LinkStore(repo, redis, undefined, 1000);
       await store.get("abc1234");
       await store.invalidate(["abc1234", "new1"]);
       expect(redis.del).toHaveBeenCalledWith(["link:abc1234", "link:new1"]);
@@ -139,10 +139,10 @@ describe("LinkStore with Redis", () => {
     const redis = fakeRedis();
     redis.get.mockRejectedValueOnce(new Error("down"));
     repo.findByCode.mockResolvedValue(row());
-    const store = new LinkStore(repo, redis as unknown as RedisLike);
+    const store = new LinkStore(repo, redis);
     expect((await store.get("abc1234"))?.id).toBe(7);
 
-    const store2 = new LinkStore(repo, redis as unknown as RedisLike);
+    const store2 = new LinkStore(repo, redis);
     redis.kv.set("link:abc1234", "{not json");
     expect((await store2.get("abc1234"))?.id).toBe(7);
 
@@ -156,12 +156,14 @@ describe("LinkStore with Redis", () => {
     const sub = {
       on: vi.fn(),
       connect: vi.fn(async () => {}),
-      subscribe: vi.fn(async (_c: string, l: (msg: string) => void) => void (listener = l)),
+      subscribe: vi.fn((_c: string, l: (msg: string) => void) =>
+        Promise.resolve(void (listener = l)),
+      ),
       quit: vi.fn(async () => {}),
     };
     redis.duplicate.mockReturnValue(sub);
     repo.findByCode.mockResolvedValue(row());
-    const store = new LinkStore(repo, redis as unknown as RedisLike);
+    const store = new LinkStore(repo, redis);
     await store.start();
     await store.get("abc1234");
     listener('["abc1234"]');

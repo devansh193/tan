@@ -165,4 +165,4 @@ export class LinkStore {
   }
 }
 
-export const linkStore = new LinkStore(linksRepository, sharedRedis as unknown as RedisLike | null);
+export const linkStore = new LinkStore(linksRepository, sharedRedis);

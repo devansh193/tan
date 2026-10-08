@@ -2,7 +2,7 @@ import type { Response } from "express";
 import { asyncHandler } from "../../common/asyncHandler";
 import type { AuthenticatedRequest } from "../auth/auth.middleware";
 import { canManageAll } from "../auth/permissions";
-import type { CreateLinkBody, ListLinksQuery } from "./links.schema";
+import type { CreateLinkBody, ListLinksQuery, UpdateLinkBody } from "./links.schema";
 import { linksService, type Actor } from "./links.service";
 
 const actor = (req: AuthenticatedRequest): Actor => ({
@@ -27,6 +27,11 @@ export const linksController = {
   // GET /api/v1/links/:id — one link.
   get: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     res.json(await linksService.get(req.organizationId!, req.params.id));
+  }),
+
+  // PATCH /api/v1/links/:id — JSON-merge update.
+  update: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    res.json(await linksService.update(actor(req), req.params.id, req.body as UpdateLinkBody));
   }),
 
   // DELETE /api/v1/links/:id — soft-delete.

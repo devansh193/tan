@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { LinksService, type Actor } from "../src/modules/links/links.service";
-import { LinkCache } from "../src/modules/links/link-cache";
 import { decodeCursor, encodeCursor } from "../src/common/cursor";
 import {
   BadRequestError,
@@ -17,6 +16,9 @@ const makeUrl = (over: Partial<Url> = {}): Url => ({
   id: 1,
   publicId: LINK_ID,
   code: "abc1234",
+  title: null,
+  description: null,
+  redirectType: 302,
   originalUrl: "https://example.com",
   organizationId: "org-1",
   userId: "user-1",
@@ -24,6 +26,7 @@ const makeUrl = (over: Partial<Url> = {}): Url => ({
   expiresAt: null,
   deletedAt: null,
   createdAt: new Date("2026-10-08T10:00:00.123Z"),
+  updatedAt: new Date("2026-10-08T10:00:00.123Z"),
   ...over,
 });
 
@@ -33,19 +36,20 @@ const makeRepo = () => ({
   findByPublicId: vi.fn(),
   list: vi.fn(),
   softDelete: vi.fn(),
+  update: vi.fn(),
 });
 
 const owner: Actor = { organizationId: "org-1", userId: "user-1", canManageAll: true };
 const member: Actor = { organizationId: "org-1", userId: "user-2", canManageAll: false };
 
 let repo: ReturnType<typeof makeRepo>;
-let cache: LinkCache;
+let store: { invalidate: ReturnType<typeof vi.fn> };
 let service: LinksService;
 
 beforeEach(() => {
   repo = makeRepo();
-  cache = new LinkCache();
-  service = new LinksService(repo, cache);
+  store = { invalidate: vi.fn().mockResolvedValue(undefined) };
+  service = new LinksService(repo, store);
 });
 
 describe("create", () => {
@@ -93,6 +97,120 @@ describe("create", () => {
   });
 });
 
+describe("create extras", () => {
+  it("invalidates the new code so a cached miss can't hide it", async () => {
+    repo.create.mockImplementation((d: Partial<Url>) => makeUrl(d));
+    await service.create(owner, { url: "https://x.com", code: "promo" });
+    expect(store.invalidate).toHaveBeenCalledWith(["promo"]);
+  });
+
+  it("applies utm to the destination and returns the extras", async () => {
+    repo.create.mockImplementation((d: Partial<Url>) => makeUrl(d));
+    const link = await service.create(owner, {
+      url: "https://x.com/p?a=1",
+      title: "T",
+      redirectType: 301,
+      utm: { source: "news" },
+    });
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originalUrl: "https://x.com/p?a=1&utm_source=news",
+        title: "T",
+        redirectType: 301,
+      }),
+    );
+    expect(link.utm).toEqual({
+      source: "news",
+      medium: null,
+      campaign: null,
+      term: null,
+      content: null,
+    });
+    expect(link.redirectType).toBe(301);
+  });
+
+  it("400s when utm pushes the URL past 2048 chars", async () => {
+    const url = `https://x.com/${"a".repeat(2030)}`;
+    await expect(
+      service.create(owner, { url, utm: { campaign: "c".repeat(50) } }),
+    ).rejects.toBeInstanceOf(BadRequestError);
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("update", () => {
+  beforeEach(() => {
+    repo.findByPublicId.mockResolvedValue(makeUrl({ userId: "user-1" }));
+    repo.update.mockImplementation((_id: number, _org: string, f: Partial<Url>) =>
+      makeUrl({ userId: "user-1", ...f }),
+    );
+  });
+
+  it("changes only the given fields and returns the new view", async () => {
+    const link = await service.update(owner, LINK_ID, { title: "New", expiresAt: null });
+    expect(repo.update).toHaveBeenCalledWith(1, "org-1", { title: "New", expiresAt: null });
+    expect(link.title).toBe("New");
+  });
+
+  it("frees the old code and invalidates both codes", async () => {
+    const link = await service.update(owner, LINK_ID, { code: "fresh" });
+    expect(link.code).toBe("fresh");
+    expect(store.invalidate).toHaveBeenCalledWith(["abc1234", "fresh"]);
+  });
+
+  it("merges utm into the current URL when url is omitted", async () => {
+    repo.findByPublicId.mockResolvedValue(
+      makeUrl({ originalUrl: "https://example.com/?utm_source=a&k=v" }),
+    );
+    await service.update(owner, LINK_ID, { utm: { source: null, medium: "email" } });
+    expect(repo.update).toHaveBeenCalledWith(1, "org-1", {
+      originalUrl: "https://example.com/?k=v&utm_medium=email",
+    });
+  });
+
+  it("merges utm into a new url when both are given", async () => {
+    await service.update(owner, LINK_ID, { url: "https://new.com/x", utm: { source: "s" } });
+    expect(repo.update).toHaveBeenCalledWith(1, "org-1", {
+      originalUrl: "https://new.com/x?utm_source=s",
+    });
+  });
+
+  it("lets a member edit only their own links", async () => {
+    await expect(service.update(member, LINK_ID, { title: "x" })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    expect(repo.update).not.toHaveBeenCalled();
+    repo.findByPublicId.mockResolvedValue(makeUrl({ userId: "user-2" }));
+    await expect(service.update(member, LINK_ID, { title: "x" })).resolves.toBeDefined();
+  });
+
+  it("maps reserved and taken codes to 409", async () => {
+    await expect(service.update(owner, LINK_ID, { code: "api" })).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+    repo.update.mockRejectedValue({ code: "23505" });
+    await expect(service.update(owner, LINK_ID, { code: "taken" })).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+    expect(store.invalidate).not.toHaveBeenCalled();
+  });
+
+  it("404s another org's link, malformed ids, and a link deleted meanwhile", async () => {
+    await expect(service.update(owner, "abc", { title: "x" })).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    repo.findByPublicId.mockResolvedValue(undefined);
+    await expect(service.update(owner, LINK_ID, { title: "x" })).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    repo.findByPublicId.mockResolvedValue(makeUrl());
+    repo.update.mockResolvedValue(undefined);
+    await expect(service.update(owner, LINK_ID, { title: "x" })).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+  });
+});
+
 describe("list", () => {
   const input = { sort: "createdAt" as const, order: "desc" as const, limit: 2 };
 
@@ -109,6 +227,12 @@ describe("list", () => {
     );
     expect(page.data.map((l) => l.id)).toEqual(["link_a", "link_b"]);
     expect(decodeCursor(page.nextCursor!)).toEqual({ k: "2026-10-08T10:00:00.123Z", id: "link_b" });
+  });
+
+  it("passes q and userId through to the repository", async () => {
+    repo.list.mockResolvedValue([]);
+    await service.list("org-1", { ...input, q: "launch", userId: "u1" });
+    expect(repo.list).toHaveBeenCalledWith(expect.objectContaining({ q: "launch", userId: "u1" }));
   });
 
   it("returns a null cursor on the last page", async () => {
@@ -211,11 +335,10 @@ describe("remove", () => {
     await expect(service.remove(owner, LINK_ID)).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it("evicts the cached redirect", async () => {
-    cache.set("abc1234", { id: 1, originalUrl: "https://example.com", expiresAt: null });
+  it("invalidates the redirect cache for its code", async () => {
     repo.findByPublicId.mockResolvedValue(makeUrl());
     repo.softDelete.mockResolvedValue(true);
     await service.remove(owner, LINK_ID);
-    expect(cache.get("abc1234")).toBeUndefined();
+    expect(store.invalidate).toHaveBeenCalledWith(["abc1234"]);
   });
 });

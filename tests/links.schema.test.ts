@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { createLinkSchema, listLinksQuerySchema } from "../src/modules/links/links.schema";
+import {
+  createLinkSchema,
+  listLinksQuerySchema,
+  updateLinkSchema,
+} from "../src/modules/links/links.schema";
 
 const ok = (url: string) => createLinkSchema.safeParse({ url }).success;
 
@@ -40,5 +44,70 @@ describe("listLinksQuerySchema", () => {
       sort: "clicks",
       order: "asc",
     });
+  });
+});
+
+describe("create extras", () => {
+  it("accepts title, description, redirectType and utm", () => {
+    const res = createLinkSchema.safeParse({
+      url: "https://a.com",
+      title: "  Launch  ",
+      description: "d",
+      redirectType: 301,
+      utm: { source: "x", term: null },
+    });
+    expect(res.success && res.data.title).toBe("Launch");
+  });
+
+  it("rejects other redirect types, unknown utm keys and long values", () => {
+    const bad = [
+      { redirectType: 307 },
+      { utm: { utm_source: "x" } },
+      { title: "x".repeat(201) },
+      { description: "x".repeat(1001) },
+      { title: "   " },
+      { utm: { source: "x".repeat(201) } },
+    ];
+    for (const extra of bad) {
+      expect(createLinkSchema.safeParse({ url: "https://a.com", ...extra }).success).toBe(false);
+    }
+  });
+});
+
+describe("updateLinkSchema", () => {
+  it("clears nullable fields with null — including expiresAt", () => {
+    expect(updateLinkSchema.parse({ expiresAt: null, title: null, description: null })).toEqual({
+      expiresAt: null,
+      title: null,
+      description: null,
+    });
+  });
+
+  it("still requires a future expiresAt when one is given", () => {
+    expect(updateLinkSchema.safeParse({ expiresAt: "2001-01-01T00:00:00Z" }).success).toBe(false);
+    expect(updateLinkSchema.safeParse({ expiresAt: "2099-01-01T00:00:00Z" }).success).toBe(true);
+  });
+
+  it("rejects an empty body, unknown keys and nulls on non-nullable fields", () => {
+    for (const body of [
+      {},
+      { customAlias: "x" },
+      { url: null },
+      { code: null },
+      { redirectType: null },
+    ]) {
+      expect(updateLinkSchema.safeParse(body).success).toBe(false);
+    }
+  });
+});
+
+describe("list filters", () => {
+  it("accepts q and userId", () => {
+    expect(listLinksQuerySchema.parse({ q: "  launch ", userId: "u1" })).toMatchObject({
+      q: "launch",
+      userId: "u1",
+    });
+    expect(listLinksQuerySchema.safeParse({ q: "x".repeat(101) }).success).toBe(false);
+    expect(listLinksQuerySchema.safeParse({ q: "   " }).success).toBe(false);
   });
 });
