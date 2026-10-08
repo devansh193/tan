@@ -974,6 +974,52 @@
           }
         },
         {
+          "name": "Update Link",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('utm merged', () => pm.expect(pm.response.json().url).to.include('utm_source=postman'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/links/{{linkId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "links",
+                "{{linkId}}"
+              ]
+            },
+            "description": "JSON-merge update: send only changed fields; null clears title, description or expiresAt. Changing code frees the old code immediately.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Edited from Postman\",\n  \"redirectType\": 301,\n  \"utm\": {\n    \"source\": \"postman\",\n    \"medium\": \"test\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
           "name": "Redirect (follow short code)",
           "event": [
             {

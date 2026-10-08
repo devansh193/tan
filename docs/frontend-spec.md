@@ -19,15 +19,14 @@
 
 **Backend base URL (dev):** `http://localhost:3000`
 
-**API status.** The links API is `v1`. Shipped today: create, list (cursor pagination), get and delete links. Coming in later v1 releases, each additive (existing fields keep their meaning):
+**API status.** The links API is `v1`. Shipped today: create, list (cursor pagination, search, creator filter), get, edit (`PATCH`) and delete links, plus an interim analytics endpoint (`GET /api/v1/analytics`, see [`docs/api/analytics.md`](./api/analytics.md)). Coming in later v1 releases, each additive (existing fields keep their meaning):
 
-| Next         | Adds                                                                                          |
-| ------------ | --------------------------------------------------------------------------------------------- |
-| Link editing | `PATCH /api/v1/links/:id`, title/description, 301/302 choice, UTM builder, search and filter  |
-| Tags         | `/api/v1/tags`, `tagIds` on links, tag filter                                                 |
-| Analytics    | `GET /api/v1/analytics` (time series, geo/device/browser/OS/referrer/source, unique visitors) |
-| QR codes     | `GET /api/v1/links/:id/qr` (SVG/PNG, colors), QR scans vs clicks                              |
-| Viewer role  | read-only `viewer` organization role                                                          |
+| Next        | Adds                                                                             |
+| ----------- | -------------------------------------------------------------------------------- |
+| Tags        | `/api/v1/tags`, `tagIds` on links, tag filter                                    |
+| Analytics   | pre-aggregated rollups behind the same `GET /api/v1/analytics` (faster at scale) |
+| QR codes    | `GET /api/v1/links/:id/qr` (SVG/PNG, colors), QR scans vs clicks                 |
+| Viewer role | read-only `viewer` organization role                                             |
 
 Build the UI so these slot in, but don't call them until they ship.
 
@@ -317,8 +316,12 @@ Content-Type: application/json
 
 {
   "url": "https://example.com/long/path",
-  "code": "promo",                         // optional
-  "expiresAt": "2030-01-01T00:00:00.000Z"  // optional, must be future
+  "code": "promo",                          // optional
+  "title": "Launch post",                   // optional, ≤200
+  "description": "Spring landing page",     // optional, ≤1000
+  "expiresAt": "2030-01-01T00:00:00.000Z",  // optional, must be future
+  "redirectType": 302,                      // optional, 301 | 302 (default 302)
+  "utm": { "source": "newsletter", "medium": "email", "campaign": "launch" } // optional
 }
 ```
 
@@ -327,6 +330,9 @@ Validation rules:
 - `url`: valid http/https URL, max 2048 chars, no embedded credentials (`https://user:pass@…`), must not point at the shortener's own host
 - `url` is checked against Google Safe Browsing (when configured) → 400 `"URL is flagged as unsafe"`
 - `code`: optional, regex `^[A-Za-z0-9_-]{3,32}$`
+- `title`/`description`: trimmed, can't be blank
+- `utm`: any of `source`, `medium`, `campaign`, `term`, `content` (≤200 each). Merged into `url` as `utm_*` params; other query params are kept as sent. The final URL must stay ≤2048 chars → 400 otherwise
+- `redirectType`: `302` (default) counts every visit; `301` is cached by browsers for up to an hour, so repeat visits in that hour aren't counted and edits reach those visitors late. Show this as a hint next to the toggle
 - Reserved codes rejected: `api`, `health`, `ready`, `favicon.ico`, `robots.txt` → 409 `"Code is reserved"`
 - Duplicate code → 409 `"Code already taken"`
 - Unknown fields → 400 (`"Unrecognized key(s) in object: 'customAlias'"`)
@@ -379,6 +385,9 @@ Authorization: Bearer <token>
 - `sort`: `createdAt` (default) or `clicks`
 - `order`: `desc` (default) or `asc`
 - `cursor`: the previous page's `nextCursor`; opaque — never build or parse it. A malformed cursor → 400.
+- `q`: optional search, 1–100 chars, matched case-insensitively against code, title and URL (`%`/`_` are literal)
+- `userId`: optional, only links created by that user ("Created by me" = `session.user.id`)
+- Keep `q`, `userId`, `sort` and `order` unchanged while following a cursor; changing any of them starts a new list
 
 **Response (200):**
 
@@ -402,10 +411,25 @@ Authorization: Bearer <token>
 
 Returns the Link. 404 if unknown or in another organization.
 
+#### Update link
+
+```
+PATCH /api/v1/links/:id
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "title": "New title", "expiresAt": null, "utm": { "source": "x", "medium": null } }
+```
+
+- JSON merge: send **only changed fields**. Omitted = unchanged; `null` clears `title`, `description` or `expiresAt`
+- Same validation as create. `url`, `code` and `redirectType` can't be `null`
+- `utm` values set a param, `null` removes it; applied to the new `url` if both are sent, otherwise to the current one
+- Changing `code` frees the old one **immediately** — anything already shared with the old short URL starts returning 404. Confirm with the user before saving a new code
+- Response 200 with the updated Link (`updatedAt` changes). Empty body → 400. Member editing someone else's link → 403 `"Only organization admins can edit other members' links"`
+
 #### Link stats
 
-Per-source breakdown, time series and visitor analytics move to
-`GET /api/v1/analytics` (phase D). Until then, `clicks` on the Link is the total.
+Use `GET /api/v1/analytics?linkId=<id>` (see [`docs/api/analytics.md`](./api/analytics.md)) for the link's time series and breakdowns (`groupBy=sources|countries|devices|…`). `clicks` on the Link is the all-time total.
 
 - `clicks` **excludes bots** and link-preview crawlers (Slackbot, facebookexternalhit, curl, …). Testing with `curl` won't increase counts — use a real browser.
 
@@ -429,7 +453,8 @@ GET /:code
 GET /:code/:channel      e.g. /aBc12X/ig
 ```
 
-- **302** redirect to the link's `url` on success
+- **302** or **301** redirect to the link's `url` on success, per its `redirectType`
+- Every response carries `X-Robots-Tag: noindex, nofollow`; short links never appear in search results
 - **404** if unknown/deleted
 - **410** if expired
 - Unknown `channel` still redirects (attribution falls back to other signals)
@@ -487,7 +512,10 @@ Build the following screens. Group under a dashboard layout after auth.
 - [ ] Table/cards: short URL (copyable), destination `url` (truncated), clicks, created date, expiry badge
 - [ ] "Load more" / infinite scroll: request the next page with `cursor=nextCursor`; stop when `nextCursor` is `null`. No page numbers or totals
 - [ ] Sort control: Newest (`sort=createdAt&order=desc`), Oldest (`order=asc`), Most clicks (`sort=clicks`). Changing sort resets the list and cursor
-- [ ] Hide Delete for a `member` on links they didn't create (`createdBy !== session.user.id`)
+- [ ] Hide Edit and Delete for a `member` on links they didn't create (`createdBy !== session.user.id`)
+- [ ] Search box → `q` (debounce ~300 ms; resets the list and cursor)
+- [ ] "Created by me" toggle → `userId=session.user.id`
+- [ ] Show `title` when set, else the short URL
 - [ ] Empty state for new orgs
 - [ ] Loading and error states
 - [ ] Delete with confirmation
@@ -496,7 +524,10 @@ Build the following screens. Group under a dashboard layout after auth.
 
 - [ ] URL input with validation feedback
 - [ ] Optional custom code with live format hint (`3–32 chars, A-Z a-z 0-9 _ -`); 409 → "code taken" inline error
+- [ ] Optional title and description
 - [ ] Optional datetime picker for expiry (must be future)
+- [ ] **UTM builder:** 5 optional inputs (source, medium, campaign, term, content) with a live preview of the final URL
+- [ ] Redirect type toggle: 302 (default) / 301, with the 301 caveat as a hint
 - [ ] Success: show generated short URL with copy button
 - [ ] Map `"field: reason"` 400 messages to inline field errors
 
@@ -507,7 +538,8 @@ Build the following screens. Group under a dashboard layout after auth.
 - [ ] **Share panel:** one copy button per platform from `shareUrls` (icon + name); QR code generated client-side from `shareUrls.qr` (a server QR endpoint arrives later)
 - [ ] Copy short URL button
 - [ ] Note in UI: bot/preview hits are excluded
-- [ ] Placeholder for analytics charts (traffic sources, time series, geo, devices); wire up when `GET /api/v1/analytics` ships
+- [ ] **Edit:** same form as create, prefilled; PATCH only the changed fields, `null` to clear title/description/expiry. Warn before changing `code` (old short URL stops working)
+- [ ] Analytics charts from `GET /api/v1/analytics?linkId=<id>`: clicks over time, sources, countries, devices
 
 ### Org settings
 
@@ -628,13 +660,21 @@ interface Link {
   code: string;
   shortUrl: string;
   url: string;
+  title: string | null;
+  description: string | null;
+  redirectType: 301 | 302;
+  /** Read back from `url`; the URL is the only place UTM values are stored */
+  utm: Utm;
   shareUrls: Record<Platform, string>;
   clicks: number;
   /** User id of the member who created the link */
   createdBy: string;
   expiresAt: string | null;
   createdAt: string;
+  updatedAt: string;
 }
+
+type Utm = Record<"source" | "medium" | "campaign" | "term" | "content", string | null>;
 
 /** GET /api/v1/links */
 interface Page<T> {
@@ -648,13 +688,30 @@ interface ListLinksQuery {
   cursor?: string; // nextCursor from the previous page
   sort?: "createdAt" | "clicks"; // default createdAt
   order?: "asc" | "desc"; // default desc
+  q?: string; // search code, title, URL
+  userId?: string; // creator filter
 }
 
 /** POST /api/v1/links body (unknown keys → 400) */
 interface CreateLinkBody {
   url: string;
   code?: string;
+  title?: string;
+  description?: string;
   expiresAt?: string; // ISO, future
+  redirectType?: 301 | 302;
+  utm?: Partial<Utm>; // null removes a param
+}
+
+/** PATCH /api/v1/links/:id — send only changed fields; null clears */
+interface UpdateLinkBody {
+  url?: string;
+  code?: string;
+  title?: string | null;
+  description?: string | null;
+  expiresAt?: string | null;
+  redirectType?: 301 | 302;
+  utm?: Partial<Utm>;
 }
 ```
 

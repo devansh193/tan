@@ -1,0 +1,39 @@
+meta {
+  name: Update Link
+  type: http
+  seq: 8
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/links/{{linkId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{sessionToken}}
+}
+
+body:json {
+  {
+    "title": "Edited from Bruno",
+    "redirectType": 301,
+    "utm": { "source": "bruno", "medium": "test" }
+  }
+}
+
+tests {
+  test('200 OK', () => expect(res.getStatus()).to.equal(200));
+  try {
+    const d = res.getBody();
+    test('title updated', () => expect(d.title).to.equal('Edited from Bruno'));
+    test('redirect type', () => expect(d.redirectType).to.equal(301));
+    test('utm merged into url', () => expect(d.url).to.include('utm_source=bruno'));
+    test('utm read back', () => expect(d.utm.medium).to.equal('test'));
+  } catch (e) {}
+}
+
+docs {
+  JSON-merge update: omitted fields are unchanged; null clears title, description or expiresAt.
+  Changing code frees the old code immediately.
+}
