@@ -43,12 +43,15 @@ const parseCodes = (message: string): string[] => {
  * the codes from L1 and L2 and publishes them so every instance drops its L1.
  * Redis is optional and every Redis failure falls through to Postgres.
  *
- * ponytail: a reader that loaded the old row just before an update can write it
- * back to L2 after the DEL; the second invalidation 1 s later closes that
- * window. A versioned key would close it fully if it ever matters.
+ * A read that is still in flight when an invalidation lands (here or via
+ * pub/sub) returns what it read but caches nothing, so a slow query can't put
+ * an edited or deleted link back. The second invalidation 1 s later covers an
+ * instance that finished its read just before the publish reached it.
  */
 export class LinkStore {
   private subscriber: Subscriber | null = null;
+  /** Bumped on every invalidation; reads that span a bump don't cache. */
+  private epoch = 0;
 
   constructor(
     private readonly repo: Pick<LinksRepository, "findByCode">,
@@ -62,9 +65,10 @@ export class LinkStore {
     const cached = this.l1.get(code);
     if (cached !== undefined) return cached;
 
+    const epoch = this.epoch;
     const fromL2 = await this.readL2(code);
     if (fromL2 !== undefined) {
-      this.l1.set(code, fromL2);
+      if (epoch === this.epoch) this.l1.set(code, fromL2);
       return fromL2;
     }
 
@@ -77,8 +81,10 @@ export class LinkStore {
           redirectType: row.redirectType === 301 ? 301 : 302,
         }
       : null;
-    this.l1.set(code, link);
-    void this.writeL2(code, link);
+    if (epoch === this.epoch) {
+      this.l1.set(code, link);
+      void this.writeL2(code, link);
+    }
     return link;
   }
 
@@ -98,6 +104,7 @@ export class LinkStore {
     try {
       await sub.connect();
       await sub.subscribe(CHANNEL, (message) => {
+        this.epoch++;
         for (const code of parseCodes(message)) this.l1.delete(code);
       });
       this.subscriber = sub;
@@ -112,6 +119,7 @@ export class LinkStore {
   }
 
   private async drop(codes: string[]): Promise<void> {
+    this.epoch++;
     for (const code of codes) this.l1.delete(code);
     if (!this.redis || !codes.length) return;
     try {

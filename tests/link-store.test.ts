@@ -150,6 +150,61 @@ describe("LinkStore with Redis", () => {
     await expect(store.invalidate(["abc1234"])).resolves.toBeUndefined();
   });
 
+  it("does not cache a row read before an invalidation that lands mid-read", async () => {
+    const redis = fakeRedis();
+    let release: (u: Url) => void = () => {};
+    repo.findByCode.mockImplementationOnce(() => new Promise<Url>((r) => (release = r)));
+    const store = new LinkStore(repo, redis);
+    const pending = store.get("abc1234");
+    await vi.waitFor(() => expect(repo.findByCode).toHaveBeenCalled()); // read is in flight
+    await store.invalidate(["abc1234"]); // the edit commits while the read is in flight
+    release(row({ originalUrl: "https://old.com" }));
+    expect((await pending)?.originalUrl).toBe("https://old.com"); // this caller keeps what it read
+    expect(redis.sendCommand).not.toHaveBeenCalled(); // but it is not written to L2…
+    repo.findByCode.mockResolvedValue(row({ originalUrl: "https://new.com" }));
+    expect((await store.get("abc1234"))?.originalUrl).toBe("https://new.com"); // …or kept in L1
+  });
+
+  it("does not keep an L2 value in L1 when an invalidation lands mid-read", async () => {
+    const redis = fakeRedis();
+    let release: (v: string) => void = () => {};
+    redis.get.mockImplementationOnce(() => new Promise<string>((r) => (release = r)));
+    const store = new LinkStore(repo, redis);
+    const pending = store.get("abc1234");
+    await vi.waitFor(() => expect(redis.get).toHaveBeenCalled());
+    await store.invalidate(["abc1234"]);
+    release(JSON.stringify({ id: 7, url: "https://old.com", expiresAt: null, redirectType: 302 }));
+    await pending;
+    repo.findByCode.mockResolvedValue(row({ originalUrl: "https://new.com" }));
+    expect((await store.get("abc1234"))?.originalUrl).toBe("https://new.com");
+  });
+
+  it("does not cache a mid-read row when another instance's invalidation arrives", async () => {
+    const redis = fakeRedis();
+    let listener: (msg: string) => void = () => {};
+    redis.duplicate.mockReturnValue({
+      on: vi.fn(),
+      connect: vi.fn(() => Promise.resolve()),
+      subscribe: vi.fn((_c: string, l: (msg: string) => void) =>
+        Promise.resolve(void (listener = l)),
+      ),
+      quit: vi.fn(() => Promise.resolve()),
+    });
+    let release: (u: Url) => void = () => {};
+    repo.findByCode.mockImplementationOnce(() => new Promise<Url>((r) => (release = r)));
+    const store = new LinkStore(repo, redis);
+    await store.start();
+    const pending = store.get("abc1234");
+    await vi.waitFor(() => expect(repo.findByCode).toHaveBeenCalled()); // read is in flight
+    listener('["abc1234"]');
+    release(row({ originalUrl: "https://old.com" }));
+    await pending;
+    expect(redis.sendCommand).not.toHaveBeenCalled();
+    repo.findByCode.mockResolvedValue(row({ originalUrl: "https://new.com" }));
+    expect((await store.get("abc1234"))?.originalUrl).toBe("https://new.com");
+    await store.stop();
+  });
+
   it("drops L1 entries when another instance publishes an invalidation", async () => {
     const redis = fakeRedis();
     let listener: (msg: string) => void = () => {};
