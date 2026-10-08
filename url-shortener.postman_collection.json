@@ -974,6 +974,31 @@
           }
         },
         {
+          "name": "Redirect (follow short code)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('302 redirect', () => pm.response.to.have.status(302));",
+                  "pm.test('Location header present', () => pm.expect(pm.response.headers.get('Location')).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{shortCode}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{shortCode}}"]
+            },
+            "description": "Public route — returns a 302 to the original URL (410 if expired). Tip: disable Settings > 'Automatically follow redirects' to see the 302 + Location header."
+          }
+        },
+        {
           "name": "Update Link",
           "event": [
             {
@@ -1017,31 +1042,6 @@
                 }
               }
             }
-          }
-        },
-        {
-          "name": "Redirect (follow short code)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('302 redirect', () => pm.response.to.have.status(302));",
-                  "pm.test('Location header present', () => pm.expect(pm.response.headers.get('Location')).to.be.a('string').and.not.empty);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/{{shortCode}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["{{shortCode}}"]
-            },
-            "description": "Public route — returns a 302 to the original URL (410 if expired). Tip: disable Settings > 'Automatically follow redirects' to see the 302 + Location header."
           }
         },
         {
