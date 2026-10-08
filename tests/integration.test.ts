@@ -99,6 +99,36 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
     ]);
   });
 
+  it("serves org-scoped analytics: time series and per-source breakdown", async () => {
+    const { auth: other } = await newUser(app, "analytics");
+    const created = await request(app)
+      .post("/api/v1/links")
+      .set(other)
+      .send({ url: "https://example.com/analytics" });
+    const { id, shareUrls } = created.body as { id: string; shareUrls: Record<string, string> };
+    for (const u of [shareUrls.instagram, shareUrls.instagram, shareUrls.linkedin])
+      await request(app).get(new URL(u).pathname).set("User-Agent", "Mozilla/5.0");
+    await clickRecorder.stop();
+
+    const sources = await request(app).get("/api/v1/analytics?groupBy=sources").set(other);
+    expect(sources.status).toBe(200);
+    expect(sources.body.data).toEqual([
+      { value: "instagram", method: "channel", clicks: 2, uniques: 1 },
+      { value: "linkedin", method: "channel", clicks: 1, uniques: 1 },
+    ]);
+
+    const series = await request(app).get(`/api/v1/analytics?linkId=${id}`).set(other);
+    const buckets = series.body.data as { clicks: number }[];
+    expect(buckets).toHaveLength(31); // 30 days, both ends' buckets
+    expect(buckets.reduce((n, r) => n + r.clicks, 0)).toBe(3);
+
+    // Another org's analytics never include these clicks.
+    const theirs = await request(app)
+      .get(`/api/v1/analytics?groupBy=sources&linkId=${id}`)
+      .set(auth);
+    expect(theirs.body.data).toEqual([]);
+  });
+
   it("refuses a code equal to an existing link's code (no hijack)", async () => {
     const victim = await request(app)
       .post("/api/v1/links")

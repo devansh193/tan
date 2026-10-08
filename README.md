@@ -198,15 +198,17 @@ in-app browser (Instagram, Facebook, LinkedIn, TikTok, Threads…) → referrer
 (`t.co`, `lnkd.in`, …) → `unknown`. Link-preview crawlers (`Twitterbot`,
 `facebookexternalhit`, `LinkedInBot`, …) are not counted.
 
-The per-source breakdown moves to `GET /api/v1/analytics?groupBy=sources`
-(phase D of the v1 rollout); the shape is:
+`GET /api/v1/analytics?groupBy=sources` returns the per-source breakdown
+(see [`docs/api/analytics.md`](docs/api/analytics.md)):
 
 ```json
-"sources": [
-  { "source": "instagram", "method": "channel", "clicks": 910 },
-  { "source": "x", "method": "referer", "clicks": 40 },
-  { "source": "unknown", "method": "none", "clicks": 70 }
-]
+{
+  "data": [
+    { "value": "instagram", "method": "channel", "clicks": 910, "uniques": 640 },
+    { "value": "x", "method": "referer", "clicks": 40, "uniques": 38 },
+    { "value": "unknown", "method": "none", "clicks": 70, "uniques": 61 }
+  ]
+}
 ```
 
 `method` tells exact (`channel`, `utm`) from inferred (`clickid`, `ua`,
