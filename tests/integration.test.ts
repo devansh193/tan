@@ -228,6 +228,11 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
     expect((await request(app).get("/api/v1/links").set(m.auth)).status).toBe(200);
     const denied = await request(app).delete(`/api/v1/links/${ownerLink.body.id}`).set(m.auth);
     expect(denied.status).toBe(403);
+    const editDenied = await request(app)
+      .patch(`/api/v1/links/${ownerLink.body.id}`)
+      .set(m.auth)
+      .send({ title: "hijack" });
+    expect(editDenied.status).toBe(403);
     const own = await request(app).post("/api/v1/links").set(m.auth).send({ url: "https://m.com" });
     expect((await request(app).delete(`/api/v1/links/${own.body.id}`).set(m.auth)).status).toBe(
       204,
@@ -256,5 +261,104 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
     expect((await request(app).get(`/${code}`)).status).toBe(302);
     expect((await request(app).delete(`/api/v1/links/${id}`).set(auth)).status).toBe(204);
     expect((await request(app).get(`/${code}`)).status).toBe(404);
+  });
+  it("creates with extras and redirects with the link's status and headers", async () => {
+    const created = await request(app)
+      .post("/api/v1/links")
+      .set(auth)
+      .send({
+        url: "https://dest.com/p?a=b%20c",
+        title: "Launch",
+        redirectType: 301,
+        utm: { source: "news", campaign: "launch day" },
+      });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({
+      title: "Launch",
+      description: null,
+      redirectType: 301,
+      url: "https://dest.com/p?a=b%20c&utm_source=news&utm_campaign=launch%20day",
+      utm: { source: "news", medium: null, campaign: "launch day", term: null, content: null },
+    });
+
+    const hit = await request(app).get(`/${created.body.code}`).set("User-Agent", "Mozilla/5.0");
+    expect(hit.status).toBe(301);
+    expect(hit.headers.location).toBe(created.body.url);
+    expect(hit.headers["cache-control"]).toBe("private, max-age=3600");
+    expect(hit.headers["x-robots-tag"]).toBe("noindex, nofollow");
+  });
+
+  it("applies edits to redirects immediately, frees old codes, and clears with null", async () => {
+    const code = `edit-${Date.now()}`;
+    const created = await request(app)
+      .post("/api/v1/links")
+      .set(auth)
+      .send({ url: "https://first.com", code, expiresAt: "2099-01-01T00:00:00Z", title: "T" });
+    const id = created.body.id as string;
+    expect((await request(app).get(`/${code}`)).headers.location).toBe("https://first.com"); // warm caches
+
+    const moved = await request(app)
+      .patch(`/api/v1/links/${id}`)
+      .set(auth)
+      .send({ url: "https://second.com" });
+    expect(moved.status).toBe(200);
+    expect(moved.body.updatedAt).not.toBe(created.body.updatedAt);
+    const after = await request(app).get(`/${code}`);
+    expect(after.headers.location).toBe("https://second.com");
+    expect(after.headers["cache-control"]).toBe("private, max-age=0");
+
+    const renamed = await request(app)
+      .patch(`/api/v1/links/${id}`)
+      .set(auth)
+      .send({ code: `${code}-b` });
+    expect(renamed.body.code).toBe(`${code}-b`);
+    expect((await request(app).get(`/${code}`)).status).toBe(404);
+    expect((await request(app).get(`/${code}-b`)).status).toBe(302);
+
+    const cleared = await request(app)
+      .patch(`/api/v1/links/${id}`)
+      .set(auth)
+      .send({ expiresAt: null, title: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body).toMatchObject({ expiresAt: null, title: null });
+
+    expect((await request(app).patch(`/api/v1/links/${id}`).set(auth).send({})).status).toBe(400);
+  });
+
+  it("resolves a code at once even if it was requested before it existed", async () => {
+    const code = `soon-${Date.now()}`;
+    expect((await request(app).get(`/${code}`)).status).toBe(404); // cached as a miss
+    await request(app)
+      .post("/api/v1/links")
+      .set(auth)
+      .send({ url: "https://now.com", code })
+      .expect(201);
+    expect((await request(app).get(`/${code}`)).headers.location).toBe("https://now.com");
+  });
+
+  it("searches code, title and URL literally, and filters by creator", async () => {
+    const { auth: solo, userId } = await newUser(app, "search");
+    const mk = (body: object) =>
+      request(app).post("/api/v1/links").set(solo).send(body).expect(201);
+    const a = await mk({ url: "https://alpha.example/x", title: "Summer sale" });
+    const b = await mk({ url: "https://beta.example/100%25-off" });
+    const c = await mk({ url: "https://gamma.example", code: `zeta_${Date.now()}` });
+    const ids = (res: request.Response) =>
+      (res.body.data as { id: string }[]).map((l) => l.id).sort();
+    const search = (q: string) => request(app).get("/api/v1/links").query({ q }).set(solo);
+
+    expect(ids(await search("SUMMER"))).toEqual([a.body.id]);
+    expect(ids(await search("beta.example"))).toEqual([b.body.id]);
+    expect(ids(await search("zeta_"))).toEqual([c.body.id]);
+    expect(ids(await search("%"))).toEqual([b.body.id]); // only the URL with a literal %
+    expect(ids(await search("nomatch"))).toEqual([]);
+
+    const mine = await request(app).get("/api/v1/links").query({ userId }).set(solo);
+    expect(ids(mine)).toEqual([a.body.id, b.body.id, c.body.id].sort());
+    const nobody = await request(app)
+      .get("/api/v1/links")
+      .query({ userId: "someone-else" })
+      .set(solo);
+    expect(nobody.body.data).toEqual([]);
   });
 });
