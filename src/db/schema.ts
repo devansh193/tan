@@ -1,4 +1,14 @@
-import { bigint, bigserial, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  bigint,
+  bigserial,
+  check,
+  index,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 import { organization, user } from "./auth-schema";
 
 // Authentication tables (user, session, account, verification, jwks) live in
@@ -19,6 +29,10 @@ export const urls = pgTable(
     publicId: text("public_id").notNull().unique(),
     originalUrl: text("original_url").notNull(),
     code: text("code").notNull().unique(),
+    title: text("title"),
+    description: text("description"),
+    // 301 (permanent) or 302 (temporary, default) — see redirect.controller.ts.
+    redirectType: smallint("redirect_type").notNull().default(302),
     // Tenant that owns the link. All management operations are scoped to the
     // caller's active organization.
     organizationId: text("organization_id")
@@ -33,12 +47,20 @@ export const urls = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     // Millisecond precision so keyset cursors round-trip through a JS Date.
     createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     // Keyset pagination: (sort key, public_id) within an organization.
     index("urls_org_created_idx").on(t.organizationId, t.createdAt, t.publicId),
     index("urls_org_clicks_idx").on(t.organizationId, t.clickCount, t.publicId),
     index("urls_user_id_created_at_idx").on(t.userId, t.createdAt),
+    // List filter by creator.
+    index("urls_org_user_created_idx").on(t.organizationId, t.userId, t.createdAt),
+    // `q` search: trigram indexes make ILIKE '%…%' an index scan.
+    index("urls_code_trgm_idx").using("gin", t.code.op("gin_trgm_ops")),
+    index("urls_title_trgm_idx").using("gin", t.title.op("gin_trgm_ops")),
+    index("urls_original_url_trgm_idx").using("gin", t.originalUrl.op("gin_trgm_ops")),
+    check("urls_redirect_type_check", sql`${t.redirectType} IN (301, 302)`),
   ],
 );
 

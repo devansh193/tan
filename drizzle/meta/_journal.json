@@ -50,6 +50,13 @@
       "when": 1791399077890,
       "tag": "0006_link_public_id",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791433926338,
+      "tag": "0007_link_core",
+      "breakpoints": true
     }
   ]
 }
