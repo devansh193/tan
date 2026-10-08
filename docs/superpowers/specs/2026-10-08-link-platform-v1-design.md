@@ -20,7 +20,7 @@ API and storage design that holds up under very high redirect and click volume.
 | 6   | QR code generation (SVG/PNG, colors)                                                                     |
 | 7   | QR scans vs. normal clicks                                                                               |
 | 8   | Full UTM support (`utm_term`, `utm_content`, server-side UTM builder)                                    |
-| 9   | `X-Robots-Tag: noindex` on redirects, plus `robots.txt`                                                  |
+| 9   | `X-Robots-Tag: noindex` on redirects, plus a `robots.txt` that blocks only `/api/`                       |
 | 10  | 301/302 choice per link                                                                                  |
 | 11  | Viewer (read-only) organization role                                                                     |
 
@@ -102,7 +102,7 @@ CSV export, custom domains, durable click queue (Redis Streams).
   DELETE /tags/:id              delete (unlinks from links)
   GET    /analytics             aggregate query (§7)
 
-GET /robots.txt                 "User-agent: *\nDisallow: /"
+GET /robots.txt                 "User-agent: *\nDisallow: /api/" (short links stay crawlable so preview bots work and see noindex)
 GET /:code[/:channel]           public redirect
 ```
 
@@ -181,20 +181,24 @@ then `/:code/:channel?`.
 1. Reject strings that can't be a code (existing `CODE_PATTERN` and reserved
    set) before any I/O.
 2. **Lookup:**
-   - Check the L1 in-process LRU first (existing `LinkCache`, 30s TTL, 50k
-     entries).
-   - Then the L2 Redis key `link:{code}`, JSON, 1h TTL.
-   - Then Postgres. Each hit fills the levels above it.
-   - Misses are cached as a tombstone (L1 + L2, 30s) so code scanning doesn't
-     reach the DB.
-   - Cached value: `{ id, url, expiresAt, redirectType }` or `{ missing: true }`.
+
+- Check the L1 in-process LRU first (existing `LinkCache`, 30s TTL, 50k
+  entries).
+- Then the L2 Redis key `link:{code}`, JSON, 1h TTL.
+- Then Postgres. Each hit fills the levels above it.
+- Misses are cached as a tombstone (L1 + L2, 30s) so code scanning doesn't
+  reach the DB.
+- Cached value: `{ id, url, expiresAt, redirectType }` or `{ missing: true }`.
+
 3. An expired link returns `410`.
 4. `clickRecorder.enqueue(link.id, meta)`, unchanged and non-blocking.
 5. Redirect with `link.redirectType`.
-   - **302:** `Cache-Control: private, max-age=0`.
-   - **301:** `Cache-Control: private, max-age=3600`. The cap stops browsers
-     caching a permanent redirect forever. The docs warn that 301 under-counts
-     repeat visits.
+
+- **302:** `Cache-Control: private, max-age=0`.
+- **301:** `Cache-Control: private, max-age=3600`. The cap stops browsers
+  caching a permanent redirect forever. The docs warn that 301 under-counts
+  repeat visits.
+
 6. Every redirect, 404 and 410 response sets `X-Robots-Tag: noindex, nofollow`.
 
 **Invalidation:**
@@ -386,7 +390,7 @@ Vitest and Supertest, following the existing style in `tests/`.
 - `X-Robots-Tag`
 - `/robots.txt`
 
-**Integration with `RUN_DB_TESTS=1` (CI Postgres + Redis):**
+**Integration with** `RUN_DB_TESTS=1` **(CI Postgres + Redis):**
 
 - Create → PATCH code → old code 404s, new code redirects
 - Rollup upsert from a flushed batch
