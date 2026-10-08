@@ -12,12 +12,24 @@
 
 - Email/password authentication (Better Auth)
 - Multi-tenant **organizations** — every user gets a personal org on sign-up; teams can create orgs and invite members
-- Org-scoped short links with optional custom aliases and expiry
+- Org-scoped short links (versioned API `/api/v1/links`) with optional custom codes and expiry
 - Click analytics (geo, device, browser, UTM, referer) with **per-platform source attribution** (Instagram, LinkedIn, X, …); bot/link-preview hits excluded
 - Per-platform **share links** from a single short link (`/{code}/ig`, `/{code}/li`, …)
 - Public redirect at `/{code}` or `/{code}/{channel}` (302 to original URL)
 
 **Backend base URL (dev):** `http://localhost:3000`
+
+**API status.** The links API is `v1`. Shipped today: create, list (cursor pagination), get and delete links. Coming in later v1 releases, each additive (existing fields keep their meaning):
+
+| Next         | Adds                                                                                          |
+| ------------ | --------------------------------------------------------------------------------------------- |
+| Link editing | `PATCH /api/v1/links/:id`, title/description, 301/302 choice, UTM builder, search and filter  |
+| Tags         | `/api/v1/tags`, `tagIds` on links, tag filter                                                 |
+| Analytics    | `GET /api/v1/analytics` (time series, geo/device/browser/OS/referrer/source, unique visitors) |
+| QR codes     | `GET /api/v1/links/:id/qr` (SVG/PNG, colors), QR scans vs clicks                              |
+| Viewer role  | read-only `viewer` organization role                                                          |
+
+Build the UI so these slot in, but don't call them until they ship.
 
 **Frontend should run separately** (e.g. `http://localhost:5173`) and talk to the API via CORS. Set `CORS_ORIGINS` on the backend to include the FE origin in production.
 
@@ -50,13 +62,13 @@ VITE_API_URL=http://localhost:3000
 
 ### 2.3 Multitenancy — active organization
 
-All URL management is scoped to the user's **active organization** on their session.
+All link management (`/api/v1/*`) is scoped to the user's **active organization** on their session.
 
 - On sign-up, the backend auto-creates a personal org (`"{name}'s Organization"`, user is `owner`).
 - **Gotcha:** the session returned by **sign-up** is created _before_ that org exists, so it has `activeOrganizationId: null`. Every **sign-in** session is pinned to the user's first org automatically.
 - Users can belong to multiple orgs; they **switch** via `POST /api/auth/organization/set-active`.
 - Accepting an invitation or creating an org (unless `keepCurrentActiveOrganization: true`) switches the active org too.
-- If no active org: URL endpoints return **403** `"No active organization. Select one to continue."`
+- If no active org: `/api/v1` endpoints return **403** `"No active organization. Select one to continue."`
 - If the user was removed from the active org: **403** `"You are no longer a member of this organization."`
 
 **The FE must:**
@@ -64,7 +76,7 @@ All URL management is scoped to the user's **active organization** on their sess
 1. After **sign-up**, immediately sign in with the same credentials (dev) — or call `GET /api/auth/organization/list` and `set-active` the first org. In production, sign-up is followed by email verification + sign-in anyway.
 2. After login, call `GET /api/auth/get-session` and read `session.activeOrganizationId`.
 3. Show an org switcher when the user belongs to multiple orgs (`GET /api/auth/organization/list`).
-4. Call `set-active` when the user picks a different org, then refresh URL data.
+4. Call `set-active` when the user picks a different org, then refetch links (drop any cached pages and cursors — they belong to the old org).
 5. On either 403 above: refetch org list and prompt the user to pick/create an org.
 
 ### 2.4 Email verification (production only)
@@ -104,17 +116,17 @@ Common codes: `INVALID_EMAIL_OR_PASSWORD` (401), `EMAIL_NOT_VERIFIED` (403, prod
 }
 ```
 
-| HTTP | code                | When                                                                   |
-| ---- | ------------------- | ---------------------------------------------------------------------- |
-| 400  | `BAD_REQUEST`       | Validation failure, malformed JSON                                     |
-| 401  | `UNAUTHORIZED`      | Missing/invalid session token                                          |
-| 403  | `FORBIDDEN`         | No active org, removed from org, member deleting another member's link |
-| 404  | `NOT_FOUND`         | Unknown route or short link                                            |
-| 409  | `CONFLICT`          | Alias taken or reserved                                                |
-| 410  | `GONE`              | Expired short link (redirect route)                                    |
-| 413  | `PAYLOAD_TOO_LARGE` | Body > 16kb                                                            |
-| 429  | `RATE_LIMITED`      | Too many requests                                                      |
-| 500  | `INTERNAL`          | Server error                                                           |
+| HTTP | code                | When                                                                                              |
+| ---- | ------------------- | ------------------------------------------------------------------------------------------------- |
+| 400  | `BAD_REQUEST`       | Validation failure, unknown body field, malformed JSON or cursor                                  |
+| 401  | `UNAUTHORIZED`      | Missing/invalid session token                                                                     |
+| 403  | `FORBIDDEN`         | No active org, removed from org, role lacks the permission, member deleting another member's link |
+| 404  | `NOT_FOUND`         | Unknown route, unknown link id (also another org's link), unknown short code                      |
+| 409  | `CONFLICT`          | Code taken or reserved                                                                            |
+| 410  | `GONE`              | Expired short link (redirect route)                                                               |
+| 413  | `PAYLOAD_TOO_LARGE` | Body > 16kb                                                                                       |
+| 429  | `RATE_LIMITED`      | Too many requests                                                                                 |
+| 500  | `INTERNAL`          | Server error                                                                                      |
 
 FE helper: `const msg = body?.error?.message ?? body?.message ?? "Something went wrong"`.
 
@@ -279,8 +291,10 @@ All require `Authorization: Bearer <token>`.
 | --------------------------------------------------------------- | :---: | :---: | :------: |
 | Update org, invite, cancel invite, change roles, remove members |   ✓   |   ✓   |    –     |
 | Delete org                                                      |   ✓   |   –   |    –     |
-| Create / list / view stats of org links                         |   ✓   |   ✓   |    ✓     |
+| Create / list / view org links                                  |   ✓   |   ✓   |    ✓     |
 | Delete org links                                                |  any  |  any  | own only |
+
+A link's `createdBy` is the creator's user id: a `member` may delete a link only when `createdBy === session.user.id`. A role without a permission gets **403** `"Your role does not allow <resource>:<action>"` (e.g. `link:create`).
 
 **Invitation expiry:** 48 hours.
 
@@ -443,11 +457,11 @@ Build the following screens. Group under a dashboard layout after auth.
 
 ### 5.2 Dashboard (authenticated)
 
-| Route           | Purpose                                                                                                                                          |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/` or `/links` | **Main view:** paginated table of org's short links                                                                                              |
-| `/links/new`    | Create link form (URL, optional alias, optional expiry) — or inline modal on main view                                                           |
-| `/links/:code`  | **Detail / analytics:** click count, expiry, copy button, per-platform share links, traffic-source breakdown, recent clicks table, delete action |
+| Route           | Purpose                                                                                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/` or `/links` | **Main view:** org's links, newest first, "Load more" pagination, sort by newest / oldest / most clicks                                                                           |
+| `/links/new`    | Create link form (URL, optional custom code, optional expiry) — or inline modal on main view                                                                                      |
+| `/links/:id`    | **Detail:** total clicks, expiry, copy button, per-platform share links, delete action. Route by `id` (`link_…`), not `code`. Analytics charts arrive with the analytics endpoint |
 
 ### 5.3 Organization
 
@@ -470,8 +484,10 @@ Build the following screens. Group under a dashboard layout after auth.
 
 ### Links list page
 
-- [ ] Table/cards: short URL (copyable), original URL (truncated), clicks, created date, expiry badge
-- [ ] "Load more" pagination (`nextCursor`)
+- [ ] Table/cards: short URL (copyable), destination `url` (truncated), clicks, created date, expiry badge
+- [ ] "Load more" / infinite scroll: request the next page with `cursor=nextCursor`; stop when `nextCursor` is `null`. No page numbers or totals
+- [ ] Sort control: Newest (`sort=createdAt&order=desc`), Oldest (`order=asc`), Most clicks (`sort=clicks`). Changing sort resets the list and cursor
+- [ ] Hide Delete for a `member` on links they didn't create (`createdBy !== session.user.id`)
 - [ ] Empty state for new orgs
 - [ ] Loading and error states
 - [ ] Delete with confirmation
@@ -479,19 +495,19 @@ Build the following screens. Group under a dashboard layout after auth.
 ### Create link form
 
 - [ ] URL input with validation feedback
-- [ ] Optional custom alias with live format hint (`3–32 chars, A-Z a-z 0-9 _ -`)
+- [ ] Optional custom code with live format hint (`3–32 chars, A-Z a-z 0-9 _ -`); 409 → "code taken" inline error
 - [ ] Optional datetime picker for expiry (must be future)
 - [ ] Success: show generated short URL with copy button
 - [ ] Map `"field: reason"` 400 messages to inline field errors
 
-### Link detail / stats
+### Link detail
 
+- [ ] Fetch with `GET /api/v1/links/:id`; 404 → "link not found" page (also when it belongs to another org)
 - [ ] Summary cards: total clicks, created, expires (or "Never")
-- [ ] **Share panel:** one copy button per platform from `shareUrls` (icon + name); QR code generated client-side from `shareUrls.qr`
-- [ ] **Traffic sources:** bar/donut chart of `sources` summed by `source`; optional method badge (`channel`/`utm` = exact, `ua`/`referer` = inferred)
-- [ ] Recent clicks table: time, source, country/city, browser, OS, device, referer, UTM fields
+- [ ] **Share panel:** one copy button per platform from `shareUrls` (icon + name); QR code generated client-side from `shareUrls.qr` (a server QR endpoint arrives later)
 - [ ] Copy short URL button
 - [ ] Note in UI: bot/preview hits are excluded
+- [ ] Placeholder for analytics charts (traffic sources, time series, geo, devices); wire up when `GET /api/v1/analytics` ships
 
 ### Org settings
 
@@ -626,32 +642,19 @@ interface Page<T> {
   nextCursor: string | null;
 }
 
-type SourceMethod = "channel" | "utm" | "clickid" | "ua" | "referer" | "none";
-
-interface SourceCount {
-  /** Platform name, or other normalized value (e.g. "google", "unknown") */
-  source: string;
-  method: SourceMethod;
-  clicks: number;
+/** GET /api/v1/links query */
+interface ListLinksQuery {
+  limit?: number; // 1–100, default 20
+  cursor?: string; // nextCursor from the previous page
+  sort?: "createdAt" | "clicks"; // default createdAt
+  order?: "asc" | "desc"; // default desc
 }
 
-interface Click {
-  id: number;
-  urlId: number;
-  ip: string | null;
-  country: string | null;
-  state: string | null;
-  city: string | null;
-  browser: string | null;
-  os: string | null;
-  device: string | null;
-  referer: string | null;
-  utmSource: string | null;
-  utmMedium: string | null;
-  utmCampaign: string | null;
-  source: string | null;
-  sourceMethod: SourceMethod | null;
-  createdAt: string;
+/** POST /api/v1/links body (unknown keys → 400) */
+interface CreateLinkBody {
+  url: string;
+  code?: string;
+  expiresAt?: string; // ISO, future
 }
 ```
 
@@ -701,13 +704,13 @@ Backend env the FE team should know about:
 3. Manual smoke test order:
    - Sign up → then **sign in** → capture `set-auth-token` header
    - Get session → confirm `activeOrganizationId` is set
-   - Create URL → copy `shortUrl`
-   - List URLs → see item
+   - Create link → note `id`, copy `shortUrl`
+   - List links → see item; with `limit=1`, follow `nextCursor` until `null`
    - Open `shortUrl` and a `shareUrls.instagram` link in a **browser** (curl counts as a bot) → redirects
-   - Stats → see clicks in `recentClicks` and `sources` (recording is async; may take ~1 s)
-   - Delete → 204
-   - Create org → set active → create URL in new org
-4. Auth rate limit is 20 req / 15 min per IP — heavy manual testing will hit 429s; restart the backend (in-memory store) or flush `rl:auth:*` keys in Redis
+   - Get link by `id` → `clicks` went up (recording is async; may take ~1 s)
+   - Delete by `id` → 204; the short URL now 404s
+   - Create org → set active → create a link in the new org; the old org's link `id` now 404s
+4. Auth rate limit is 20 req / 15 min per IP — heavy manual testing will hit 429s; restart the backend (in-memory store) or flush `rl:auth:*` keys in Redis. `/api/v1/*` has its own 100 / 15 min limit (`rl:api:*`)
 
 ---
 
@@ -726,7 +729,8 @@ Backend env the FE team should know about:
 - Never log or expose the bearer token
 - Use HTTPS in production
 - Validate URLs client-side before submit (http/https only)
-- Role-gated UI: hide invite/remove/delete-org actions for non-admin members (backend enforces too). Find the caller's role by matching `session.userId` against `members[].userId` from `get-full-organization`
+- Treat `id` and `nextCursor` as opaque strings: never parse, build or edit them
+- Role-gated UI: hide invite/remove/delete-org actions for non-admin members, and Delete on links a `member` didn't create (backend enforces too). Find the caller's role by matching `session.userId` against `members[].userId` from `get-full-organization`
 
 ---
 
@@ -741,8 +745,8 @@ Backend env the FE team should know about:
        │  Bearer token + active org
        ▼
 ┌─────────────┐                     ┌──────────────┐
-│  Dashboard  │ ─ POST /api/v1/links ►│  Links API     │
-│  /links     │ ◄────── Link ──────│  /api/v1/*     │
+│  Dashboard  │ ─ /api/v1/links ──► │  Links API   │
+│  /links     │ ◄── Link, Page ──── │  /api/v1/*   │
 └─────────────┘                     └──────────────┘
                                            │
                                            ▼
