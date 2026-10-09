@@ -36,6 +36,8 @@ export const urls = pgTable(
     redirectType: smallint("redirect_type").notNull().default(302),
     // Share-tag clicks (`/code/ig`) get utm_source/utm_medium for that platform.
     autoUtm: boolean("auto_utm").notNull().default(false),
+    // Per-platform share links (`/code/ig`, …) are offered; off = plain short link only.
+    shareLinks: boolean("share_links").notNull().default(true),
     // Tenant that owns the link. All management operations are scoped to the
     // caller's active organization.
     organizationId: text("organization_id")

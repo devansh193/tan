@@ -51,6 +51,7 @@ export const createLinkSchema = z
     redirectType: redirectTypeSchema.optional(),
     utm: utmSchema.optional(),
     autoUtm: z.boolean().optional(),
+    shareLinks: z.boolean().optional(),
   })
   .strict();
 
@@ -68,6 +69,7 @@ export const updateLinkSchema = z
     redirectType: redirectTypeSchema.optional(),
     utm: utmSchema.optional(),
     autoUtm: z.boolean().optional(),
+    shareLinks: z.boolean().optional(),
   })
   .strict()
   .refine((body) => Object.keys(body).length > 0, "body: at least one field is required");

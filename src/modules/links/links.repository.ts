@@ -15,6 +15,7 @@ export interface CreateLinkData {
   expiresAt?: Date;
   redirectType?: 301 | 302;
   autoUtm?: boolean;
+  shareLinks?: boolean;
 }
 
 /** Columns PATCH may change; `null` clears a nullable column. */
@@ -26,6 +27,7 @@ export type UpdateLinkFields = Partial<{
   expiresAt: Date | null;
   redirectType: 301 | 302;
   autoUtm: boolean;
+  shareLinks: boolean;
 }>;
 
 export type LinkSort = "createdAt" | "clicks";

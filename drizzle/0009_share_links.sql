@@ -1,0 +1,1 @@
+ALTER TABLE "urls" ADD COLUMN "share_links" boolean DEFAULT true NOT NULL;

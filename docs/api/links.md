@@ -16,6 +16,7 @@ session's active organization. Errors use `{ "error": { "code", "message" } }`.
   "redirectType": 302,
   "utm": { "source": "news", "medium": null, "campaign": null, "term": null, "content": null },
   "autoUtm": false,
+  "shareLinks": true,
   "shareUrls": { "instagram": "http://localhost:3000/abc1234/ig", "...": "..." },
   "clicks": 0,
   "createdBy": "<user id>",
@@ -49,7 +50,8 @@ from `url`: the URL is the only place UTM values are stored.
   "expiresAt": "2030-01-01T00:00:00Z",
   "redirectType": 302,
   "utm": { "source": "newsletter", "medium": "email", "campaign": "launch" },
-  "autoUtm": false
+  "autoUtm": false,
+  "shareLinks": true
 }
 ```
 
@@ -69,6 +71,9 @@ from `url`: the URL is the only place UTM values are stored.
 - `autoUtm` (optional, default `false`): when `true`, clicks on a share URL
   (`/code/ig`, `/code/li`, …) reach the destination with that platform's
   `utm_source`/`utm_medium`. See [Channel-aware UTM](#channel-aware-utm-autoutm).
+  Requires `shareLinks` (`400` otherwise).
+- `shareLinks` (optional, default `true`): offer per-platform share URLs. When
+  `false` the link is a plain short link and `shareUrls` is `{}`.
 - Unknown fields are rejected with `400`.
 
 ### GET /api/v1/links
@@ -110,7 +115,9 @@ JSON merge: send only the fields to change.
 
 - Accepts the same fields as create. An omitted field is unchanged.
 - `null` clears `title`, `description` or `expiresAt`. `url`, `code`,
-  `redirectType` and `autoUtm` can't be `null`.
+  `redirectType`, `autoUtm` and `shareLinks` can't be `null`.
+- `shareLinks: false` also sets `autoUtm` to `false`. `autoUtm: true` on a link
+  without share links returns `400`.
 - `utm`: a value sets that param and `null` removes it. It applies to the new
   `url` if both are sent, otherwise to the current one.
 - Changing `code` frees the old code immediately: anything already shared with

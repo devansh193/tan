@@ -11,7 +11,7 @@ import type { Url } from "../src/db/schema";
 
 const LINK_ID = "link_AAAAAAAAAAAAAAAAAAAAAAAA";
 
-/** Builds a Url row with sensible defaults. */
+/** Builds a Url row with sensible defaults; undefined fields keep them, like column defaults. */
 const makeUrl = (over: Partial<Url> = {}): Url => ({
   id: 1,
   publicId: LINK_ID,
@@ -20,6 +20,7 @@ const makeUrl = (over: Partial<Url> = {}): Url => ({
   description: null,
   redirectType: 302,
   autoUtm: false,
+  shareLinks: true,
   originalUrl: "https://example.com",
   organizationId: "org-1",
   userId: "user-1",
@@ -28,7 +29,7 @@ const makeUrl = (over: Partial<Url> = {}): Url => ({
   deletedAt: null,
   createdAt: new Date("2026-10-08T10:00:00.123Z"),
   updatedAt: new Date("2026-10-08T10:00:00.123Z"),
-  ...over,
+  ...Object.fromEntries(Object.entries(over).filter(([, v]) => v !== undefined)),
 });
 
 const makeRepo = () => ({
@@ -137,6 +138,23 @@ describe("create extras", () => {
     expect(link.autoUtm).toBe(true);
   });
 
+  it("shareLinks: on by default; off returns no share URLs", async () => {
+    repo.create.mockImplementation((d: Partial<Url>) => makeUrl(d));
+    expect(
+      Object.keys((await service.create(owner, { url: "https://x.com" })).shareUrls),
+    ).not.toEqual([]);
+    const plain = await service.create(owner, { url: "https://x.com", shareLinks: false });
+    expect(repo.create).toHaveBeenLastCalledWith(expect.objectContaining({ shareLinks: false }));
+    expect(plain.shareLinks).toBe(false);
+    expect(plain.shareUrls).toEqual({});
+  });
+
+  it("400s on autoUtm without share links", async () => {
+    await expect(
+      service.create(owner, { url: "https://x.com", shareLinks: false, autoUtm: true }),
+    ).rejects.toThrow("autoUtm: requires shareLinks");
+  });
+
   it("400s when utm pushes the URL past 2048 chars", async () => {
     const url = `https://x.com/${"a".repeat(2030)}`;
     await expect(
@@ -165,6 +183,21 @@ describe("update", () => {
     expect(repo.update).toHaveBeenCalledWith(1, "org-1", { autoUtm: true });
     expect(link.autoUtm).toBe(true);
     expect(store.invalidate).toHaveBeenCalledWith(["abc1234"]);
+  });
+
+  it("turning share links off turns autoUtm off too", async () => {
+    repo.findByPublicId.mockResolvedValue(makeUrl({ userId: "user-1", autoUtm: true }));
+    const link = await service.update(owner, LINK_ID, { shareLinks: false });
+    expect(repo.update).toHaveBeenCalledWith(1, "org-1", { shareLinks: false, autoUtm: false });
+    expect(link.shareUrls).toEqual({});
+  });
+
+  it("400s on autoUtm for a link without share links", async () => {
+    repo.findByPublicId.mockResolvedValue(makeUrl({ userId: "user-1", shareLinks: false }));
+    await expect(service.update(owner, LINK_ID, { autoUtm: true })).rejects.toThrow(
+      "autoUtm: requires shareLinks",
+    );
+    expect(repo.update).not.toHaveBeenCalled();
   });
 
   it("frees the old code and invalidates both codes", async () => {

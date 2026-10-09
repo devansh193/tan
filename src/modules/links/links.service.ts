@@ -33,6 +33,8 @@ export interface LinkView {
   utm: Utm;
   /** Share-tag clicks get that platform's utm_source/utm_medium at redirect time. */
   autoUtm: boolean;
+  /** Whether per-platform share links are offered; `shareUrls` is empty when off. */
+  shareLinks: boolean;
   /** Per-platform share links, e.g. `{ instagram: "https://…/abc1234/ig" }`. */
   shareUrls: Record<string, string>;
   clicks: number;
@@ -64,6 +66,7 @@ export interface CreateLinkInput {
   redirectType?: 301 | 302;
   utm?: UtmPatch;
   autoUtm?: boolean;
+  shareLinks?: boolean;
 }
 
 export interface UpdateLinkInput {
@@ -75,6 +78,7 @@ export interface UpdateLinkInput {
   redirectType?: 301 | 302;
   utm?: UtmPatch;
   autoUtm?: boolean;
+  shareLinks?: boolean;
 }
 
 export interface ListLinksInput {
@@ -96,6 +100,11 @@ const withUtm = (url: string, utm?: UtmPatch): string => {
     throw new BadRequestError("url: too long after adding UTM parameters (max 2048)");
   }
   return out;
+};
+
+/** autoUtm tags share-link clicks, so it can't be on for a link without share links. */
+const assertShareTagging = (shareLinks: boolean, autoUtm?: boolean) => {
+  if (autoUtm && !shareLinks) throw new BadRequestError("autoUtm: requires shareLinks");
 };
 
 /** Exactly what `Date#toISOString` emits; `Date.parse` alone accepts "1", "Mar 1", … */
@@ -128,6 +137,7 @@ export class LinksService {
   /** Creates a link with a custom or random code. */
   async create(actor: Actor, input: CreateLinkInput): Promise<LinkView> {
     if (input.code && isReservedCode(input.code)) throw new ConflictError("Code is reserved");
+    assertShareTagging(input.shareLinks ?? true, input.autoUtm);
     const url = withUtm(input.url, input.utm);
     await assertSafeUrl(url);
 
@@ -141,6 +151,7 @@ export class LinksService {
       expiresAt: input.expiresAt,
       redirectType: input.redirectType,
       autoUtm: input.autoUtm,
+      shareLinks: input.shareLinks,
     };
 
     if (input.code) {
@@ -198,6 +209,7 @@ export class LinksService {
       throw new ForbiddenError("Only organization admins can edit other members' links");
     }
     if (input.code && isReservedCode(input.code)) throw new ConflictError("Code is reserved");
+    assertShareTagging(input.shareLinks ?? current.shareLinks, input.autoUtm);
 
     const fields: UpdateLinkFields = {};
     if (input.url !== undefined || input.utm) {
@@ -211,6 +223,9 @@ export class LinksService {
     if (input.expiresAt !== undefined) fields.expiresAt = input.expiresAt;
     if (input.redirectType !== undefined) fields.redirectType = input.redirectType;
     if (input.autoUtm !== undefined) fields.autoUtm = input.autoUtm;
+    if (input.shareLinks !== undefined) fields.shareLinks = input.shareLinks;
+    // autoUtm only acts on share-link clicks, so turning share links off turns it off too.
+    if (input.shareLinks === false) fields.autoUtm = false;
 
     let row: Url | undefined;
     try {
@@ -265,9 +280,12 @@ export class LinksService {
       redirectType: url.redirectType === 301 ? 301 : 302,
       utm: readUtm(url.originalUrl),
       autoUtm: url.autoUtm,
-      shareUrls: Object.fromEntries(
-        Object.entries(CHANNELS).map(([tag, name]) => [name, `${shortUrl}/${tag}`]),
-      ),
+      shareLinks: url.shareLinks,
+      shareUrls: url.shareLinks
+        ? Object.fromEntries(
+            Object.entries(CHANNELS).map(([tag, name]) => [name, `${shortUrl}/${tag}`]),
+          )
+        : {},
       clicks: url.clickCount,
       createdBy: url.userId,
       expiresAt: url.expiresAt,

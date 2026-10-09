@@ -122,3 +122,13 @@ describe("autoUtm", () => {
     expect(updateLinkSchema.safeParse({ autoUtm: null }).success).toBe(false);
   });
 });
+
+describe("shareLinks", () => {
+  it("is an optional boolean on create and PATCH, never null", () => {
+    expect(createLinkSchema.parse({ url: "https://a.com", shareLinks: false }).shareLinks).toBe(
+      false,
+    );
+    expect(updateLinkSchema.parse({ shareLinks: true })).toEqual({ shareLinks: true });
+    expect(updateLinkSchema.safeParse({ shareLinks: null }).success).toBe(false);
+  });
+});
