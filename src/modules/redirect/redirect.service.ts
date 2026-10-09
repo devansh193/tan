@@ -1,8 +1,10 @@
 import { GoneError, NotFoundError } from "../../common/errors";
+import { channelUtm } from "../analytics/attribution";
 import type { RedirectMeta } from "../analytics/click-analytics";
 import { clickRecorder, type ClickRecorder } from "../analytics/click-recorder";
 import { isPossibleCode } from "../links/codes";
 import { linkStore, type LinkStore } from "../links/link-store";
+import { applyUtm } from "../links/utm";
 
 /** Where to send the visitor, and how. */
 export interface Resolved {
@@ -27,7 +29,11 @@ export class RedirectService {
       throw new GoneError("Short link has expired");
     }
     this.clicks.enqueue(link.id, meta);
-    return { url: link.originalUrl, redirectType: link.redirectType };
+    // With autoUtm, a share-tag click tells the destination which platform it
+    // came from, matching how tan attributes it; campaign/term/content stay.
+    const platform = link.autoUtm ? channelUtm(meta.channel) : undefined;
+    const url = platform ? applyUtm(link.originalUrl, platform) : link.originalUrl;
+    return { url, redirectType: link.redirectType };
   }
 }
 

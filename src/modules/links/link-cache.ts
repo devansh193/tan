@@ -4,6 +4,8 @@ export interface CachedLink {
   originalUrl: string;
   expiresAt: Date | null;
   redirectType: 301 | 302;
+  /** Share-tag clicks get that platform's utm_source/utm_medium. */
+  autoUtm: boolean;
 }
 
 const TTL_MS = 30_000;

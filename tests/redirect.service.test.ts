@@ -8,6 +8,7 @@ const link = (over: Partial<CachedLink> = {}): CachedLink => ({
   originalUrl: "https://t.com",
   expiresAt: null,
   redirectType: 302,
+  autoUtm: false,
   ...over,
 });
 
@@ -47,5 +48,31 @@ describe("resolve", () => {
     links.get.mockResolvedValue(link({ expiresAt: new Date(Date.now() - 1000) }));
     await expect(service.resolve("abc1234", {})).rejects.toBeInstanceOf(GoneError);
     expect(clicks.enqueue).not.toHaveBeenCalled();
+  });
+
+  describe("autoUtm", () => {
+    const url = "https://t.com/p?a=1&utm_source=newsletter&utm_medium=email&utm_campaign=c";
+
+    it("sets source and medium from the share tag and keeps the rest", async () => {
+      links.get.mockResolvedValue(link({ originalUrl: url, autoUtm: true }));
+      const { url: dest } = await service.resolve("abc1234", { channel: "ig" });
+      expect(dest).toBe(
+        "https://t.com/p?a=1&utm_campaign=c&utm_source=instagram&utm_medium=social",
+      );
+    });
+
+    it("leaves the stored URL alone without a tag, with an unknown tag, or when off", async () => {
+      links.get.mockResolvedValue(link({ originalUrl: url, autoUtm: true }));
+      expect((await service.resolve("abc1234", {})).url).toBe(url);
+      expect((await service.resolve("abc1234", { channel: "nope" })).url).toBe(url);
+      links.get.mockResolvedValue(link({ originalUrl: url, autoUtm: false }));
+      expect((await service.resolve("abc1234", { channel: "ig" })).url).toBe(url);
+    });
+
+    it("still records the click with the tag", async () => {
+      links.get.mockResolvedValue(link({ originalUrl: url, autoUtm: true }));
+      await service.resolve("abc1234", { channel: "em" });
+      expect(clicks.enqueue).toHaveBeenCalledWith(9, { channel: "em" });
+    });
   });
 });

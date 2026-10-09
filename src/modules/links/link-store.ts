@@ -6,7 +6,8 @@ import { linksRepository, type LinksRepository } from "./links.repository";
 const HIT_TTL_S = 3600;
 const MISS_TTL_S = 30;
 const CHANNEL = "link:invalidate";
-const keyOf = (code: string) => `link:${code}`;
+// Bump the version whenever the cached shape changes, so old entries are never misread.
+const keyOf = (code: string) => `link:v2:${code}`;
 
 type Subscriber = {
   on(event: "error", listener: (err: unknown) => void): unknown;
@@ -25,7 +26,13 @@ export interface RedisLike {
 }
 
 type Stored =
-  | { id: number; url: string; expiresAt: string | null; redirectType: 301 | 302 }
+  | {
+      id: number;
+      url: string;
+      expiresAt: string | null;
+      redirectType: 301 | 302;
+      autoUtm: boolean;
+    }
   | { missing: true };
 
 const parseCodes = (message: string): string[] => {
@@ -79,6 +86,7 @@ export class LinkStore {
           originalUrl: row.originalUrl,
           expiresAt: row.expiresAt,
           redirectType: row.redirectType === 301 ? 301 : 302,
+          autoUtm: row.autoUtm,
         }
       : null;
     if (epoch === this.epoch) {
@@ -142,6 +150,7 @@ export class LinkStore {
         originalUrl: v.url,
         expiresAt: v.expiresAt ? new Date(v.expiresAt) : null,
         redirectType: v.redirectType,
+        autoUtm: v.autoUtm,
       };
     } catch (err) {
       logger.warn({ err, code }, "Link L2 read failed; using the database");
@@ -157,6 +166,7 @@ export class LinkStore {
           url: link.originalUrl,
           expiresAt: link.expiresAt?.toISOString() ?? null,
           redirectType: link.redirectType,
+          autoUtm: link.autoUtm,
         }
       : { missing: true };
     try {
