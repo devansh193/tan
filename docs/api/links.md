@@ -15,6 +15,7 @@ session's active organization. Errors use `{ "error": { "code", "message" } }`.
   "description": null,
   "redirectType": 302,
   "utm": { "source": "news", "medium": null, "campaign": null, "term": null, "content": null },
+  "autoUtm": false,
   "shareUrls": { "instagram": "http://localhost:3000/abc1234/ig", "...": "..." },
   "clicks": 0,
   "createdBy": "<user id>",
@@ -47,7 +48,8 @@ from `url`: the URL is the only place UTM values are stored.
   "description": "Spring campaign landing page",
   "expiresAt": "2030-01-01T00:00:00Z",
   "redirectType": 302,
-  "utm": { "source": "newsletter", "medium": "email", "campaign": "launch" }
+  "utm": { "source": "newsletter", "medium": "email", "campaign": "launch" },
+  "autoUtm": false
 }
 ```
 
@@ -64,6 +66,9 @@ from `url`: the URL is the only place UTM values are stored.
   (each ≤200 chars). They are merged into `url` as `utm_*` params; every other
   query param is kept exactly as sent. The resulting URL must stay ≤2048
   chars (`400` otherwise).
+- `autoUtm` (optional, default `false`): when `true`, clicks on a share URL
+  (`/code/ig`, `/code/li`, …) reach the destination with that platform's
+  `utm_source`/`utm_medium`. See [Channel-aware UTM](#channel-aware-utm-autoutm).
 - Unknown fields are rejected with `400`.
 
 ### GET /api/v1/links
@@ -104,8 +109,8 @@ JSON merge: send only the fields to change.
 ```
 
 - Accepts the same fields as create. An omitted field is unchanged.
-- `null` clears `title`, `description` or `expiresAt`. `url`, `code` and
-  `redirectType` can't be `null`.
+- `null` clears `title`, `description` or `expiresAt`. `url`, `code`,
+  `redirectType` and `autoUtm` can't be `null`.
 - `utm`: a value sets that param and `null` removes it. It applies to the new
   `url` if both are sent, otherwise to the current one.
 - Changing `code` frees the old code immediately: anything already shared with
@@ -132,6 +137,36 @@ from bots and link-preview crawlers are not counted.
 | -------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `302`          | `private, max-age=0`    | Every visit reaches the server and is counted. Edits apply on the next visit.                                                                                      |
 | `301`          | `private, max-age=3600` | Browsers reuse the redirect for up to an hour: repeat visits in that hour aren't counted, and an edit can take up to an hour to reach someone who already visited. |
+
+### Channel-aware UTM (`autoUtm`)
+
+Share URLs tell tan which platform a click came from. With `autoUtm: true`
+the redirect also tells the destination, so its analytics (Google Analytics,
+Shopify, …) attribute visits and orders to the same platform:
+
+| Share tag                                         | `utm_source`              | `utm_medium` |
+| ------------------------------------------------- | ------------------------- | ------------ |
+| `ig` `fb` `li` `x` `th` `tt` `yt` `rd` `pin` `sc` | platform (`instagram`, …) | `social`     |
+| `wa` `tg`                                         | `whatsapp`, `telegram`    | `messaging`  |
+| `em`                                              | `email`                   | `email`      |
+| `sms`                                             | `sms`                     | `sms`        |
+| `qr`                                              | `qr`                      | `offline`    |
+
+These two values replace the link's own `utm.source`/`utm.medium` for that
+click; `utm.campaign`, `utm.term`, `utm.content` and every other query param
+are kept. The plain short URL (no tag) and unknown tags redirect to `url`
+unchanged. The stored `url` and the `utm` object in responses never change.
+
+Example, link `url` = `https://brewly.example/cold-brew?utm_campaign=coldbrew_launch`:
+
+| Visitor opens  | Redirected to                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| `/coldbrew/ig` | `https://brewly.example/cold-brew?utm_campaign=coldbrew_launch&utm_source=instagram&utm_medium=social` |
+| `/coldbrew/em` | `https://brewly.example/cold-brew?utm_campaign=coldbrew_launch&utm_source=email&utm_medium=email`      |
+| `/coldbrew`    | `https://brewly.example/cold-brew?utm_campaign=coldbrew_launch`                                        |
+
+With `autoUtm` on, set only `utm.campaign` (plus `content`/`term` if useful)
+on the link and let the share tag supply source and medium.
 
 Every response on these routes carries `X-Robots-Tag: noindex, nofollow`, so
 short links never appear in search results. `GET /robots.txt` blocks only

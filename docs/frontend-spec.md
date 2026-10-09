@@ -667,6 +667,8 @@ interface Link {
   redirectType: 301 | 302;
   /** Read back from `url`; the URL is the only place UTM values are stored */
   utm: Utm;
+  /** Share-URL clicks get that platform's utm_source/utm_medium (see frontend-spec-links-v1.md §8.1) */
+  autoUtm: boolean;
   shareUrls: Record<Platform, string>;
   clicks: number;
   /** User id of the member who created the link */
@@ -703,6 +705,7 @@ interface CreateLinkBody {
   expiresAt?: string; // ISO, future
   redirectType?: 301 | 302;
   utm?: Partial<Utm>; // null removes a param
+  autoUtm?: boolean;
 }
 
 /** PATCH /api/v1/links/:id — send only changed fields; null clears */
@@ -714,6 +717,7 @@ interface UpdateLinkBody {
   expiresAt?: string | null;
   redirectType?: 301 | 302;
   utm?: Partial<Utm>;
+  autoUtm?: boolean;
 }
 ```
 

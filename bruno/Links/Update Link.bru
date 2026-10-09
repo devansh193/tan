@@ -18,7 +18,8 @@ body:json {
   {
     "title": "Edited from Bruno",
     "redirectType": 301,
-    "utm": { "source": "bruno", "medium": "test" }
+    "utm": { "source": "bruno", "medium": "test" },
+    "autoUtm": true
   }
 }
 
@@ -30,6 +31,7 @@ tests {
     test('redirect type', () => expect(d.redirectType).to.equal(301));
     test('utm merged into url', () => expect(d.url).to.include('utm_source=bruno'));
     test('utm read back', () => expect(d.utm.medium).to.equal('test'));
+    test('autoUtm on', () => expect(d.autoUtm).to.equal(true));
   } catch (e) {}
 }
 

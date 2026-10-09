@@ -146,15 +146,15 @@ Passwords are 8–72 characters; emails are normalised (trimmed + lowercased).
 See [docs/api/links.md](docs/api/links.md). All routes act on the session's
 active organization; links are addressed by their permanent `id` (`link_…`).
 
-| Method | Path                | Auth | Body / Query                                                             | Description                                 |
-| ------ | ------------------- | ---- | ------------------------------------------------------------------------ | ------------------------------------------- |
-| POST   | `/api/v1/links`     | yes  | `{ url, code?, title?, description?, expiresAt?, redirectType?, utm? }`  | Create a link                               |
-| GET    | `/api/v1/links`     | yes  | `?limit&cursor&sort&order&q&userId`                                      | List (cursor pagination, search)            |
-| GET    | `/api/v1/links/:id` | yes  | —                                                                        | Read one link                               |
-| PATCH  | `/api/v1/links/:id` | yes  | `{ url?, code?, title?, description?, expiresAt?, redirectType?, utm? }` | Edit a link (`null` clears a field)         |
-| DELETE | `/api/v1/links/:id` | yes  | —                                                                        | Soft-delete                                 |
-| GET    | `/:code`            | no   | —                                                                        | Redirect (301/302 per link); 410 if expired |
-| GET    | `/:code/:channel`   | no   | —                                                                        | Redirect, attributed to channel             |
+| Method | Path                | Auth | Body / Query                                                                       | Description                                 |
+| ------ | ------------------- | ---- | ---------------------------------------------------------------------------------- | ------------------------------------------- |
+| POST   | `/api/v1/links`     | yes  | `{ url, code?, title?, description?, expiresAt?, redirectType?, utm?, autoUtm? }`  | Create a link                               |
+| GET    | `/api/v1/links`     | yes  | `?limit&cursor&sort&order&q&userId`                                                | List (cursor pagination, search)            |
+| GET    | `/api/v1/links/:id` | yes  | —                                                                                  | Read one link                               |
+| PATCH  | `/api/v1/links/:id` | yes  | `{ url?, code?, title?, description?, expiresAt?, redirectType?, utm?, autoUtm? }` | Edit a link (`null` clears a field)         |
+| DELETE | `/api/v1/links/:id` | yes  | —                                                                                  | Soft-delete                                 |
+| GET    | `/:code`            | no   | —                                                                                  | Redirect (301/302 per link); 410 if expired |
+| GET    | `/:code/:channel`   | no   | —                                                                                  | Redirect, attributed to channel             |
 
 `code` is 3–32 chars (`A–Z a–z 0–9 _ -`) and 409s if it equals any existing
 code; `expiresAt` is a future ISO date. Reserved codes (`api`, `health`,
@@ -163,7 +163,9 @@ credentials (`https://bank.com@evil.com`) or point back at this shortener, and
 are checked against Google Safe Browsing when `SAFE_BROWSING_API_KEY` is set.
 Lists return `{ data, nextCursor }`; pass `?cursor=<nextCursor>` for the next
 page. `utm` (`source`, `medium`, `campaign`, `term`, `content`) is merged into
-the destination URL. Redirects send `X-Robots-Tag: noindex, nofollow`, and are
+the destination URL; with `autoUtm: true`, share-URL clicks (`/code/ig`, …) also get
+that platform's `utm_source`/`utm_medium`, so the destination's analytics match
+tan's per-platform counts. Redirects send `X-Robots-Tag: noindex, nofollow`, and are
 cached in-process and in Redis (when `REDIS_URL` is set); edits reach every
 instance immediately via Redis pub/sub.
 

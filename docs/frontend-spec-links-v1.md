@@ -72,6 +72,7 @@ Returned by create, get, update, and inside list pages.
     "term": null,
     "content": null
   },
+  "autoUtm": false,
   "shareUrls": {
     "instagram": "http://localhost:3000/spring-launch/ig",
     "facebook": "http://localhost:3000/spring-launch/fb",
@@ -107,6 +108,7 @@ Returned by create, get, update, and inside list pages.
 | `description`  | string \| null     | Free text, internal only                                                                          |
 | `redirectType` | `301` \| `302`     | See §9                                                                                            |
 | `utm`          | object             | Read back from `url`. Always has all 5 keys; `null` = not set                                     |
+| `autoUtm`      | boolean            | Share-URL clicks get that platform's `utm_source`/`utm_medium` (§8.1). Default `false`            |
 | `shareUrls`    | object             | One tagged URL per platform; clicks on them are attributed to that platform. `qr` is for QR codes |
 | `clicks`       | number             | All-time total, bots excluded. Updates within ~1 s of a visit                                     |
 | `createdBy`    | string             | User id of the creator. Compare with `session.user.id` for permissions (§10)                      |
@@ -155,6 +157,7 @@ Content-Type: application/json
 | `expiresAt`    | no       | ISO date in the future                                                                                                    |
 | `redirectType` | no       | `301` or `302` (default `302`)                                                                                            |
 | `utm`          | no       | Any of `source`, `medium`, `campaign`, `term`, `content`; each 1–200 chars. Merged into `url` (§8)                        |
+| `autoUtm`      | no       | `true` / `false` (default `false`). See §8.1                                                                              |
 
 Any other field → 400. Omit optional fields you don't need; don't send `""`.
 
@@ -317,7 +320,7 @@ GET /api/v1/links/link_aswPlOnObu72MyNaNtwcCBbi
 | field with a value | set to that value                                  |
 | `null`             | cleared (`title`, `description`, `expiresAt` only) |
 
-Accepts the same fields and rules as create. `url`, `code` and `redirectType` can't be `null`.
+Accepts the same fields and rules as create. `url`, `code`, `redirectType` and `autoUtm` can't be `null`.
 
 ### Samples (each is a real request/response pair, applied in order to the same link)
 
@@ -484,6 +487,44 @@ Warn when the preview exceeds 2048 characters (the server returns 400).
 - **Term:** paid-search keyword.
 - **Content:** which ad or link variant (`hero_button`).
 
+### 8.1 Channel-aware UTM (`autoUtm`)
+
+Share URLs (`shareUrls.instagram` = `/code/ig`, …) tell **tan** which platform a click came from. `autoUtm: true` makes the redirect tell the **destination** too, by setting `utm_source` and `utm_medium` for that platform. The destination's analytics (Google Analytics, Shopify, …) then credit visits and orders to the same platform tan shows, from a single link.
+
+| Share tag                                         | `utm_source`              | `utm_medium` |
+| ------------------------------------------------- | ------------------------- | ------------ |
+| `ig` `fb` `li` `x` `th` `tt` `yt` `rd` `pin` `sc` | platform (`instagram`, …) | `social`     |
+| `wa` `tg`                                         | `whatsapp`, `telegram`    | `messaging`  |
+| `em`                                              | `email`                   | `email`      |
+| `sms`                                             | `sms`                     | `sms`        |
+| `qr`                                              | `qr`                      | `offline`    |
+
+- Those two values replace the link's own `utm.source`/`utm.medium` **for that click only**. `utm.campaign`, `utm.term`, `utm.content` and other query params are kept.
+- The plain `shortUrl` (no tag) redirects to `url` unchanged.
+- The stored `url` and `utm` in API responses never change: they show what was configured, not what each platform gets.
+
+**Example** (a real capture from the integration test). Create once:
+
+```json
+{
+  "url": "https://brewly.example/cold-brew?ref=launch",
+  "utm": { "campaign": "coldbrew_launch" },
+  "autoUtm": true
+}
+```
+
+| Visitor opens         | Lands on                                                                                                          |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `shareUrls.instagram` | `https://brewly.example/cold-brew?ref=launch&utm_campaign=coldbrew_launch&utm_source=instagram&utm_medium=social` |
+| `shareUrls.email`     | `https://brewly.example/cold-brew?ref=launch&utm_campaign=coldbrew_launch&utm_source=email&utm_medium=email`      |
+| `shortUrl`            | `https://brewly.example/cold-brew?ref=launch&utm_campaign=coldbrew_launch`                                        |
+
+**UI:**
+
+- A toggle in the UTM builder: **"Tag each share link with its platform"**, off by default.
+- When it's on, grey out the Source and Medium inputs with the hint _"Filled in per platform when shared via a share button"_, and show the share panel's preview URLs with the platform values.
+- Turning it on or off is a normal PATCH (`{ "autoUtm": true }`) and applies to the next click.
+
 ---
 
 ## 9. Redirect type (301 vs 302)
@@ -546,13 +587,13 @@ Confirm first: _"Delete /Se250Qb? The short link will stop working immediately."
 
 The UI never calls these; users open `shortUrl` directly.
 
-| Request                          | Result                                                                |
-| -------------------------------- | --------------------------------------------------------------------- |
-| `GET /:code`                     | 301 or 302 to `url` (per `redirectType`)                              |
-| `GET /:code/:channel` e.g. `/ig` | Same, and the click is attributed to that platform                    |
-| unknown or deleted code          | `404 {"error":{"code":"NOT_FOUND","message":"Short link not found"}}` |
-| expired link                     | `410 {"error":{"code":"GONE","message":"Short link has expired"}}`    |
-| `GET /robots.txt`                | `User-agent: *` / `Disallow: /api/`                                   |
+| Request                          | Result                                                                                                                  |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `GET /:code`                     | 301 or 302 to `url` (per `redirectType`)                                                                                |
+| `GET /:code/:channel` e.g. `/ig` | Same, and the click is attributed to that platform; with `autoUtm`, platform `utm_source`/`utm_medium` are added (§8.1) |
+| unknown or deleted code          | `404 {"error":{"code":"NOT_FOUND","message":"Short link not found"}}`                                                   |
+| expired link                     | `410 {"error":{"code":"GONE","message":"Short link has expired"}}`                                                      |
+| `GET /robots.txt`                | `User-agent: *` / `Disallow: /api/`                                                                                     |
 
 Every response on these routes carries `X-Robots-Tag: noindex, nofollow`, so short links never show up in search results. Social preview bots can still follow them.
 
@@ -578,7 +619,7 @@ Edits, renames and deletes take effect on the redirect immediately (no cache del
 - [ ] Custom code (optional) with format hint `3–32 chars, A-Z a-z 0-9 _ -`
 - [ ] Title, description (optional)
 - [ ] Expiry date-time (optional, future only)
-- [ ] UTM builder with live preview (§8)
+- [ ] UTM builder with live preview (§8), including the "Tag each share link with its platform" toggle (`autoUtm`, §8.1)
 - [ ] 301 toggle with helper text (§9)
 - [ ] On 201: show `shortUrl` with copy button and share buttons from `shareUrls`; navigate to `/links/:id`
 - [ ] Map `"field: reason"` 400s and the 409s to inline errors
@@ -629,6 +670,7 @@ interface Link {
   description: string | null;
   redirectType: 301 | 302;
   utm: Utm;
+  autoUtm: boolean;
   shareUrls: Record<Platform, string>;
   clicks: number;
   createdBy: string;
@@ -659,6 +701,7 @@ interface CreateLinkBody {
   expiresAt?: string; // ISO, future
   redirectType?: 301 | 302;
   utm?: Partial<Record<UtmKey, string>>;
+  autoUtm?: boolean; // default false
 }
 
 /** Send only changed fields. null clears title/description/expiresAt and removes a utm param. */
@@ -670,6 +713,7 @@ interface UpdateLinkBody {
   expiresAt?: string | null;
   redirectType?: 301 | 302;
   utm?: Partial<Record<UtmKey, string | null>>;
+  autoUtm?: boolean; // not nullable
 }
 
 interface ApiError {
