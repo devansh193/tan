@@ -1,0 +1,1 @@
+ALTER TABLE "urls" ADD COLUMN "auto_utm" boolean DEFAULT false NOT NULL;

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { detectSource, isBot, normalizeSource } from "../src/modules/analytics/attribution";
+import {
+  CHANNELS,
+  channelUtm,
+  detectSource,
+  isBot,
+  normalizeSource,
+} from "../src/modules/analytics/attribution";
 
 const UA = {
   chrome:
@@ -80,6 +86,24 @@ describe("isBot", () => {
   it("does not flag real browsers, in-app browsers, or 'bot'-ish phone names", () => {
     for (const ua of [UA.chrome, UA.instagram, UA.facebook, UA.linkedin, UA.cubot]) {
       expect(isBot(ua), ua).toBe(false);
+    }
+  });
+});
+
+describe("channelUtm", () => {
+  it("maps every share tag to a utm source and medium", () => {
+    expect(channelUtm("ig")).toEqual({ source: "instagram", medium: "social" });
+    expect(channelUtm("li")).toEqual({ source: "linkedin", medium: "social" });
+    expect(channelUtm("wa")).toEqual({ source: "whatsapp", medium: "messaging" });
+    expect(channelUtm("em")).toEqual({ source: "email", medium: "email" });
+    expect(channelUtm("sms")).toEqual({ source: "sms", medium: "sms" });
+    expect(channelUtm("qr")).toEqual({ source: "qr", medium: "offline" });
+    for (const tag of Object.keys(CHANNELS)) expect(channelUtm(tag)).toBeDefined();
+  });
+
+  it("ignores unknown tags and inherited object keys", () => {
+    for (const tag of [undefined, "", "IG", "nope", "constructor", "__proto__"]) {
+      expect(channelUtm(tag)).toBeUndefined();
     }
   });
 });

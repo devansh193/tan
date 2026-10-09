@@ -25,6 +25,38 @@ export const CHANNELS = {
   qr: "qr",
 } as const;
 
+/** UTM medium per share tag; the source is the platform name from CHANNELS. */
+const CHANNEL_MEDIUM: Record<keyof typeof CHANNELS, string> = {
+  ig: "social",
+  fb: "social",
+  li: "social",
+  x: "social",
+  th: "social",
+  tt: "social",
+  yt: "social",
+  rd: "social",
+  pin: "social",
+  sc: "social",
+  wa: "messaging",
+  tg: "messaging",
+  em: "email",
+  sms: "sms",
+  qr: "offline",
+};
+
+/**
+ * The `utm_source`/`utm_medium` a share tag stands for (`ig` → instagram/social),
+ * so the destination's analytics see the same platform tan attributes the
+ * click to. Undefined for unknown tags.
+ */
+export const channelUtm = (tag?: string): { source: string; medium: string } | undefined =>
+  tag && Object.hasOwn(CHANNELS, tag)
+    ? {
+        source: CHANNELS[tag as keyof typeof CHANNELS],
+        medium: CHANNEL_MEDIUM[tag as keyof typeof CHANNELS],
+      }
+    : undefined;
+
 export type SourceMethod = "channel" | "utm" | "clickid" | "ua" | "referer" | "none";
 
 export interface Attribution {

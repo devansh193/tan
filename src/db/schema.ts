@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   bigserial,
+  boolean,
   check,
   index,
   pgTable,
@@ -33,6 +34,8 @@ export const urls = pgTable(
     description: text("description"),
     // 301 (permanent) or 302 (temporary, default) — see redirect.controller.ts.
     redirectType: smallint("redirect_type").notNull().default(302),
+    // Share-tag clicks (`/code/ig`) get utm_source/utm_medium for that platform.
+    autoUtm: boolean("auto_utm").notNull().default(false),
     // Tenant that owns the link. All management operations are scoped to the
     // caller's active organization.
     organizationId: text("organization_id")
