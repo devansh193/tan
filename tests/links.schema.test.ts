@@ -111,3 +111,14 @@ describe("list filters", () => {
     expect(listLinksQuerySchema.safeParse({ q: "   " }).success).toBe(false);
   });
 });
+
+describe("autoUtm", () => {
+  it("is an optional boolean on create and PATCH, never null", () => {
+    expect(createLinkSchema.parse({ url: "https://a.com", autoUtm: true }).autoUtm).toBe(true);
+    expect(createLinkSchema.safeParse({ url: "https://a.com", autoUtm: "yes" }).success).toBe(
+      false,
+    );
+    expect(updateLinkSchema.parse({ autoUtm: false })).toEqual({ autoUtm: false });
+    expect(updateLinkSchema.safeParse({ autoUtm: null }).success).toBe(false);
+  });
+});

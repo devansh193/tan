@@ -50,6 +50,7 @@ export const createLinkSchema = z
     expiresAt: futureDateSchema.optional(),
     redirectType: redirectTypeSchema.optional(),
     utm: utmSchema.optional(),
+    autoUtm: z.boolean().optional(),
   })
   .strict();
 
@@ -66,6 +67,7 @@ export const updateLinkSchema = z
     expiresAt: z.union([z.null(), futureDateSchema]).optional(),
     redirectType: redirectTypeSchema.optional(),
     utm: utmSchema.optional(),
+    autoUtm: z.boolean().optional(),
   })
   .strict()
   .refine((body) => Object.keys(body).length > 0, "body: at least one field is required");

@@ -19,6 +19,7 @@ const makeUrl = (over: Partial<Url> = {}): Url => ({
   title: null,
   description: null,
   redirectType: 302,
+  autoUtm: false,
   originalUrl: "https://example.com",
   organizationId: "org-1",
   userId: "user-1",
@@ -129,6 +130,13 @@ describe("create extras", () => {
     expect(link.redirectType).toBe(301);
   });
 
+  it("stores autoUtm and returns it", async () => {
+    repo.create.mockImplementation((d: Partial<Url>) => makeUrl(d));
+    const link = await service.create(owner, { url: "https://x.com", autoUtm: true });
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ autoUtm: true }));
+    expect(link.autoUtm).toBe(true);
+  });
+
   it("400s when utm pushes the URL past 2048 chars", async () => {
     const url = `https://x.com/${"a".repeat(2030)}`;
     await expect(
@@ -150,6 +158,13 @@ describe("update", () => {
     const link = await service.update(owner, LINK_ID, { title: "New", expiresAt: null });
     expect(repo.update).toHaveBeenCalledWith(1, "org-1", { title: "New", expiresAt: null });
     expect(link.title).toBe("New");
+  });
+
+  it("toggles autoUtm and invalidates the cached redirect", async () => {
+    const link = await service.update(owner, LINK_ID, { autoUtm: true });
+    expect(repo.update).toHaveBeenCalledWith(1, "org-1", { autoUtm: true });
+    expect(link.autoUtm).toBe(true);
+    expect(store.invalidate).toHaveBeenCalledWith(["abc1234"]);
   });
 
   it("frees the old code and invalidates both codes", async () => {

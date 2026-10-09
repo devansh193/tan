@@ -31,6 +31,8 @@ export interface LinkView {
   redirectType: 301 | 302;
   /** UTM params read back from `url` (the URL is the single source of truth). */
   utm: Utm;
+  /** Share-tag clicks get that platform's utm_source/utm_medium at redirect time. */
+  autoUtm: boolean;
   /** Per-platform share links, e.g. `{ instagram: "https://…/abc1234/ig" }`. */
   shareUrls: Record<string, string>;
   clicks: number;
@@ -61,6 +63,7 @@ export interface CreateLinkInput {
   expiresAt?: Date;
   redirectType?: 301 | 302;
   utm?: UtmPatch;
+  autoUtm?: boolean;
 }
 
 export interface UpdateLinkInput {
@@ -71,6 +74,7 @@ export interface UpdateLinkInput {
   expiresAt?: Date | null;
   redirectType?: 301 | 302;
   utm?: UtmPatch;
+  autoUtm?: boolean;
 }
 
 export interface ListLinksInput {
@@ -136,6 +140,7 @@ export class LinksService {
       description: input.description,
       expiresAt: input.expiresAt,
       redirectType: input.redirectType,
+      autoUtm: input.autoUtm,
     };
 
     if (input.code) {
@@ -205,6 +210,7 @@ export class LinksService {
     if (input.description !== undefined) fields.description = input.description;
     if (input.expiresAt !== undefined) fields.expiresAt = input.expiresAt;
     if (input.redirectType !== undefined) fields.redirectType = input.redirectType;
+    if (input.autoUtm !== undefined) fields.autoUtm = input.autoUtm;
 
     let row: Url | undefined;
     try {
@@ -258,6 +264,7 @@ export class LinksService {
       description: url.description,
       redirectType: url.redirectType === 301 ? 301 : 302,
       utm: readUtm(url.originalUrl),
+      autoUtm: url.autoUtm,
       shareUrls: Object.fromEntries(
         Object.entries(CHANNELS).map(([tag, name]) => [name, `${shortUrl}/${tag}`]),
       ),
