@@ -2,6 +2,8 @@
 
 > **Purpose:** This document is a complete handoff for an AI agent (or human developer) building the frontend for **tan**, a multi-tenant URL shortener. The backend already exists; build a SPA or SSR app that consumes these APIs.
 >
+> **Link management screens (create, list, search, edit, delete) with captured samples:** [`docs/frontend-spec-links-v1.md`](./frontend-spec-links-v1.md).
+>
 > **Full endpoint reference with real request/response samples:** [`docs/api/auth.md`](./api/auth.md), [`docs/api/links.md`](./api/links.md), [`docs/api/organization.md`](./api/organization.md). This spec covers FE behavior; those files are the source of truth for payload shapes.
 
 ---
