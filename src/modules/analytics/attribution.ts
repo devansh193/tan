@@ -67,6 +67,8 @@ export interface Attribution {
 /** Signals available on a redirect request. */
 export interface AttributionSignals {
   channel?: string;
+  /** utm_medium of a link without share links (set by the redirect). */
+  linkMedium?: string;
   utmSource?: string;
   queryKeys?: string[];
   userAgent?: string;
@@ -155,12 +157,14 @@ const refererSource = (referer?: string): string | undefined => {
 
 /**
  * Best available source for a click, strongest signal first: explicit channel
- * tag, then UTM, platform click ID, in-app browser, referrer.
+ * tag, the link's own utm_medium (links without share links), then UTM,
+ * platform click ID, in-app browser, referrer.
  */
 export function detectSource(s: AttributionSignals): Attribution {
   if (s.channel && s.channel in CHANNELS) {
     return { source: CHANNELS[s.channel as keyof typeof CHANNELS], method: "channel" };
   }
+  if (s.linkMedium) return { source: normalizeSource(s.linkMedium), method: "utm" };
   if (s.utmSource) return { source: normalizeSource(s.utmSource), method: "utm" };
 
   const clickId = s.queryKeys?.find((k) => k in CLICK_IDS);

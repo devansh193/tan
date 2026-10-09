@@ -7,7 +7,7 @@ const HIT_TTL_S = 3600;
 const MISS_TTL_S = 30;
 const CHANNEL = "link:invalidate";
 // Bump the version whenever the cached shape changes, so old entries are never misread.
-const keyOf = (code: string) => `link:v2:${code}`;
+const keyOf = (code: string) => `link:v3:${code}`;
 
 type Subscriber = {
   on(event: "error", listener: (err: unknown) => void): unknown;
@@ -32,6 +32,7 @@ type Stored =
       expiresAt: string | null;
       redirectType: 301 | 302;
       autoUtm: boolean;
+      shareLinks: boolean;
     }
   | { missing: true };
 
@@ -87,6 +88,7 @@ export class LinkStore {
           expiresAt: row.expiresAt,
           redirectType: row.redirectType === 301 ? 301 : 302,
           autoUtm: row.autoUtm,
+          shareLinks: row.shareLinks,
         }
       : null;
     if (epoch === this.epoch) {
@@ -151,6 +153,7 @@ export class LinkStore {
         expiresAt: v.expiresAt ? new Date(v.expiresAt) : null,
         redirectType: v.redirectType,
         autoUtm: v.autoUtm,
+        shareLinks: v.shareLinks,
       };
     } catch (err) {
       logger.warn({ err, code }, "Link L2 read failed; using the database");
@@ -167,6 +170,7 @@ export class LinkStore {
           expiresAt: link.expiresAt?.toISOString() ?? null,
           redirectType: link.redirectType,
           autoUtm: link.autoUtm,
+          shareLinks: link.shareLinks,
         }
       : { missing: true };
     try {

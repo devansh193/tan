@@ -204,6 +204,10 @@ in-app browser (Instagram, Facebook, LinkedIn, TikTok, Threads…) → referrer
 (`t.co`, `lnkd.in`, …) → `unknown`. Link-preview crawlers (`Twitterbot`,
 `facebookexternalhit`, `LinkedInBot`, …) are not counted.
 
+A link created with `shareLinks: false` has no share URLs; if its destination
+carries `utm_medium`, every click on it is attributed to that medium (method
+`utm`) ahead of the inferred signals.
+
 `GET /api/v1/analytics?groupBy=sources` returns the per-source breakdown
 (see [`docs/api/analytics.md`](docs/api/analytics.md)):
 

@@ -10,6 +10,7 @@ const row = (over: Partial<Url> = {}): Url => ({
   description: null,
   redirectType: 301,
   autoUtm: true,
+  shareLinks: true,
   originalUrl: "https://example.com",
   organizationId: "org-1",
   userId: "user-1",
@@ -55,6 +56,7 @@ describe("LinkStore without Redis", () => {
       expiresAt: new Date("2030-01-01T00:00:00.000Z"),
       redirectType: 301,
       autoUtm: true,
+      shareLinks: true,
     });
     await store.get("abc1234");
     expect(repo.findByCode).toHaveBeenCalledOnce();
@@ -83,14 +85,14 @@ describe("LinkStore with Redis", () => {
     await vi.waitFor(() => expect(redis.sendCommand).toHaveBeenCalledTimes(2));
     expect(redis.sendCommand.mock.calls[0][0]).toEqual([
       "SET",
-      "link:v2:abc1234",
+      "link:v3:abc1234",
       expect.any(String),
       "EX",
       "3600",
     ]);
     expect(redis.sendCommand.mock.calls[1][0]).toEqual([
       "SET",
-      "link:v2:nope",
+      "link:v3:nope",
       '{"missing":true}',
       "EX",
       "30",
@@ -100,13 +102,14 @@ describe("LinkStore with Redis", () => {
   it("serves L2 hits without the DB, restoring dates", async () => {
     const redis = fakeRedis();
     redis.kv.set(
-      "link:v2:abc1234",
+      "link:v3:abc1234",
       JSON.stringify({
         id: 7,
         url: "https://l2.com",
         expiresAt: "2030-01-01T00:00:00.000Z",
         redirectType: 302,
         autoUtm: true,
+        shareLinks: true,
       }),
     );
     const store = new LinkStore(repo, redis);
@@ -117,6 +120,7 @@ describe("LinkStore with Redis", () => {
       expiresAt: new Date("2030-01-01T00:00:00.000Z"),
       redirectType: 302,
       autoUtm: true,
+      shareLinks: true,
     });
     expect(repo.findByCode).not.toHaveBeenCalled();
   });
@@ -129,7 +133,7 @@ describe("LinkStore with Redis", () => {
       const store = new LinkStore(repo, redis, undefined, 1000);
       await store.get("abc1234");
       await store.invalidate(["abc1234", "new1"]);
-      expect(redis.del).toHaveBeenCalledWith(["link:v2:abc1234", "link:v2:new1"]);
+      expect(redis.del).toHaveBeenCalledWith(["link:v3:abc1234", "link:v3:new1"]);
       expect(redis.published).toEqual(['["abc1234","new1"]']);
       await vi.advanceTimersByTimeAsync(1000);
       expect(redis.del).toHaveBeenCalledTimes(2);
@@ -147,7 +151,7 @@ describe("LinkStore with Redis", () => {
     expect((await store.get("abc1234"))?.id).toBe(7);
 
     const store2 = new LinkStore(repo, redis);
-    redis.kv.set("link:v2:abc1234", "{not json");
+    redis.kv.set("link:v3:abc1234", "{not json");
     expect((await store2.get("abc1234"))?.id).toBe(7);
 
     redis.del.mockRejectedValueOnce(new Error("down"));

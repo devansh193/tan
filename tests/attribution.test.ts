@@ -34,6 +34,17 @@ describe("detectSource", () => {
     ).toEqual({ source: "linkedin", method: "channel" });
   });
 
+  it("uses a plain link's utm_medium after the channel tag and before every detected signal", () => {
+    expect(
+      detectSource({ linkMedium: "Newsletter", utmSource: "x", userAgent: UA.instagram }),
+    ).toEqual({ source: "email", method: "utm" });
+    expect(detectSource({ linkMedium: "social" })).toEqual({ source: "social", method: "utm" });
+    expect(detectSource({ channel: "ig", linkMedium: "social" })).toEqual({
+      source: "instagram",
+      method: "channel",
+    });
+  });
+
   it("falls through utm -> click id -> in-app UA -> referrer -> unknown", () => {
     expect(detectSource({ utmSource: "IG" })).toEqual({ source: "instagram", method: "utm" });
     expect(detectSource({ queryKeys: ["fbclid"] })).toEqual({

@@ -9,6 +9,7 @@ const link = (over: Partial<CachedLink> = {}): CachedLink => ({
   expiresAt: null,
   redirectType: 302,
   autoUtm: false,
+  shareLinks: true,
   ...over,
 });
 
@@ -73,6 +74,32 @@ describe("resolve", () => {
       links.get.mockResolvedValue(link({ originalUrl: url, autoUtm: true }));
       await service.resolve("abc1234", { channel: "em" });
       expect(clicks.enqueue).toHaveBeenCalledWith(9, { channel: "em" });
+    });
+  });
+
+  describe("plain short links (no share links)", () => {
+    it("records the link's utm_medium as the click's source signal", async () => {
+      links.get.mockResolvedValue(
+        link({
+          originalUrl: "https://t.com/?utm_source=a&utm_medium=Newsletter",
+          shareLinks: false,
+        }),
+      );
+      await service.resolve("abc1234", { ip: "1.2.3.4" });
+      expect(clicks.enqueue).toHaveBeenCalledWith(9, { ip: "1.2.3.4", linkMedium: "Newsletter" });
+    });
+
+    it("adds nothing without a utm_medium, or when the link has share links", async () => {
+      links.get.mockResolvedValue(
+        link({ originalUrl: "https://t.com/?utm_source=a", shareLinks: false }),
+      );
+      await service.resolve("abc1234", {});
+      links.get.mockResolvedValue(link({ originalUrl: "https://t.com/?utm_medium=email" }));
+      await service.resolve("abc1234", {});
+      expect(clicks.enqueue.mock.calls).toEqual([
+        [9, {}],
+        [9, {}],
+      ]);
     });
   });
 });

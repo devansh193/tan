@@ -15,6 +15,8 @@ export interface RedirectMeta {
   channel?: string;
   /** Query parameter names on the short link (for platform click IDs). */
   queryKeys?: string[];
+  /** utm_medium stored on a link without share links; used as the click's source. */
+  linkMedium?: string;
 }
 
 /** Parsed click row fields persisted to the database. */

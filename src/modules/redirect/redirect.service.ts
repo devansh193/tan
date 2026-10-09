@@ -4,7 +4,7 @@ import type { RedirectMeta } from "../analytics/click-analytics";
 import { clickRecorder, type ClickRecorder } from "../analytics/click-recorder";
 import { isPossibleCode } from "../links/codes";
 import { linkStore, type LinkStore } from "../links/link-store";
-import { applyUtm } from "../links/utm";
+import { applyUtm, readUtm } from "../links/utm";
 
 /** Where to send the visitor, and how. */
 export interface Resolved {
@@ -28,7 +28,9 @@ export class RedirectService {
     if (link.expiresAt && link.expiresAt.getTime() < Date.now()) {
       throw new GoneError("Short link has expired");
     }
-    this.clicks.enqueue(link.id, meta);
+    // A plain short link has no share tags, so its own utm_medium names the source.
+    const linkMedium = link.shareLinks ? undefined : readUtm(link.originalUrl).medium;
+    this.clicks.enqueue(link.id, linkMedium ? { ...meta, linkMedium } : meta);
     // With autoUtm, a share-tag click tells the destination which platform it
     // came from, matching how tan attributes it; campaign/term/content stay.
     const platform = link.autoUtm ? channelUtm(meta.channel) : undefined;
