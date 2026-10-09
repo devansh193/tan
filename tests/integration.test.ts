@@ -361,4 +361,52 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("integration (Postgres)", () => {
       .set(solo);
     expect(nobody.body.data).toEqual([]);
   });
+
+  it("autoUtm: share tags tell the destination which platform sent the visitor", async () => {
+    const created = await request(app)
+      .post("/api/v1/links")
+      .set(auth)
+      .send({
+        url: "https://brewly.example/cold-brew?ref=launch",
+        utm: { campaign: "coldbrew_launch" },
+        autoUtm: true,
+      });
+    expect(created.status).toBe(201);
+    expect(created.body.autoUtm).toBe(true);
+    const { id, code } = created.body as { id: string; code: string };
+    const dest = (path: string) =>
+      request(app)
+        .get(path)
+        .set("User-Agent", "Mozilla/5.0")
+        .then((r) => r.headers.location);
+
+    expect(await dest(`/${code}/ig`)).toBe(
+      "https://brewly.example/cold-brew?ref=launch&utm_campaign=coldbrew_launch&utm_source=instagram&utm_medium=social",
+    );
+    expect(await dest(`/${code}/em`)).toBe(
+      "https://brewly.example/cold-brew?ref=launch&utm_campaign=coldbrew_launch&utm_source=email&utm_medium=email",
+    );
+    // Plain short URL: the stored destination, untouched.
+    expect(await dest(`/${code}`)).toBe(
+      "https://brewly.example/cold-brew?ref=launch&utm_campaign=coldbrew_launch",
+    );
+
+    // Turning it off applies to redirects immediately.
+    const off = await request(app).patch(`/api/v1/links/${id}`).set(auth).send({ autoUtm: false });
+    expect(off.body.autoUtm).toBe(false);
+    expect(await dest(`/${code}/ig`)).toBe(
+      "https://brewly.example/cold-brew?ref=launch&utm_campaign=coldbrew_launch",
+    );
+
+    // tan's own attribution still uses the tag.
+    await clickRecorder.stop();
+    const [row] = await db.select({ id: urls.id }).from(urls).where(eq(urls.publicId, id));
+    const sources = await analyticsRepository.sourceBreakdown(row.id);
+    expect(sources).toEqual(
+      expect.arrayContaining([
+        { source: "instagram", method: "channel", clicks: 2 },
+        { source: "email", method: "channel", clicks: 1 },
+      ]),
+    );
+  });
 });
